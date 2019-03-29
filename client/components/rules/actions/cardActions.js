@@ -1,6 +1,20 @@
+let cardColors;
+Meteor.startup(() => {
+  cardColors = Cards.simpleSchema()._schema.color.allowedValues;
+});
+
 BlazeComponent.extendComponent({
   onCreated() {
     this.subscribe('allRules');
+    this.cardColorButtonValue = new ReactiveVar('green');
+  },
+
+  cardColorButton() {
+    return this.cardColorButtonValue.get();
+  },
+
+  cardColorButtonText() {
+    return `color-${ this.cardColorButtonValue.get() }`;
   },
 
   labels() {
@@ -112,7 +126,63 @@ BlazeComponent.extendComponent({
           boardId,
         });
       },
+      'click .js-show-color-palette'(event){
+        const funct = Popup.open('setCardActionsColor');
+        const colorButton = this.find('#color-action');
+        if (colorButton.value === '') {
+          colorButton.value = 'green';
+        }
+        funct.call(this, event);
+      },
+      'click .js-set-color-action' (event) {
+        const ruleName = this.data().ruleName.get();
+        const trigger = this.data().triggerVar.get();
+        const selectedColor = this.cardColorButtonValue.get();
+        const boardId = Session.get('currentBoard');
+        const desc = Utils.getTriggerActionDesc(event, this);
+        const triggerId = Triggers.insert(trigger);
+        const actionId = Actions.insert({
+          actionType: 'setColor',
+          selectedColor,
+          boardId,
+          desc,
+        });
+        Rules.insert({
+          title: ruleName,
+          triggerId,
+          actionId,
+          boardId,
+        });
+      },
     }];
   },
 
 }).register('cardActions');
+
+BlazeComponent.extendComponent({
+  onCreated() {
+    this.currentAction = this.currentData();
+    this.colorButtonValue = Popup.getOpenerComponent().cardColorButtonValue;
+    this.currentColor = new ReactiveVar(this.colorButtonValue.get());
+  },
+
+  colors() {
+    return cardColors.map((color) => ({ color, name: '' }));
+  },
+
+  isSelected(color) {
+    return this.currentColor.get() === color;
+  },
+
+  events() {
+    return [{
+      'click .js-palette-color'() {
+        this.currentColor.set(this.currentData().color);
+      },
+      'click .js-submit' () {
+        this.colorButtonValue.set(this.currentColor.get());
+        Popup.close();
+      },
+    }];
+  },
+}).register('setCardActionsColorPopup');

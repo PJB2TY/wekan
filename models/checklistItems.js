@@ -1,21 +1,39 @@
 ChecklistItems = new Mongo.Collection('checklistItems');
 
+/**
+ * An item in a checklist
+ */
 ChecklistItems.attachSchema(new SimpleSchema({
   title: {
+    /**
+     * the text of the item
+     */
     type: String,
   },
   sort: {
+    /**
+     * the sorting field of the item
+     */
     type: Number,
     decimal: true,
   },
   isFinished: {
+    /**
+     * Is the item checked?
+     */
     type: Boolean,
     defaultValue: false,
   },
   checklistId: {
+    /**
+     * the checklist ID the item is attached to
+     */
     type: String,
   },
   cardId: {
+    /**
+     * the card ID the item is attached to
+     */
     type: String,
   },
 }));
@@ -81,17 +99,6 @@ function itemCreation(userId, doc) {
 }
 
 function itemRemover(userId, doc) {
-  const card = Cards.findOne(doc.cardId);
-  const boardId = card.boardId;
-  Activities.insert({
-    userId,
-    activityType: 'removedChecklistItem',
-    cardId: doc.cardId,
-    boardId,
-    checklistId: doc.checklistId,
-    checklistItemId: doc._id,
-    checklistItemName:doc.title,
-  });
   Activities.remove({
     checklistItemId: doc._id,
   });
@@ -171,6 +178,7 @@ function publishChekListUncompleted(userId, doc){
 if (Meteor.isServer) {
   Meteor.startup(() => {
     ChecklistItems._collection._ensureIndex({ checklistId: 1 });
+    ChecklistItems._collection._ensureIndex({ cardId: 1 });
   });
 
   ChecklistItems.after.update((userId, doc, fieldNames) => {
@@ -187,12 +195,34 @@ if (Meteor.isServer) {
     itemCreation(userId, doc);
   });
 
-  ChecklistItems.after.remove((userId, doc) => {
+  ChecklistItems.before.remove((userId, doc) => {
     itemRemover(userId, doc);
+    const card = Cards.findOne(doc.cardId);
+    const boardId = card.boardId;
+    Activities.insert({
+      userId,
+      activityType: 'removedChecklistItem',
+      cardId: doc.cardId,
+      boardId,
+      checklistId: doc.checklistId,
+      checklistItemId: doc._id,
+      checklistItemName:doc.title,
+    });
   });
 }
 
 if (Meteor.isServer) {
+  /**
+   * @operation get_checklist_item
+   * @tag Checklists
+   * @summary Get a checklist item
+   *
+   * @param {string} boardId the board ID
+   * @param {string} cardId the card ID
+   * @param {string} checklistId the checklist ID
+   * @param {string} itemId the ID of the item
+   * @return_type ChecklistItems
+   */
   JsonRoutes.add('GET', '/api/boards/:boardId/cards/:cardId/checklists/:checklistId/items/:itemId', function (req, res) {
     Authentication.checkUserId( req.userId);
     const paramItemId = req.params.itemId;
@@ -209,6 +239,19 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation edit_checklist_item
+   * @tag Checklists
+   * @summary Edit a checklist item
+   *
+   * @param {string} boardId the board ID
+   * @param {string} cardId the card ID
+   * @param {string} checklistId the checklist ID
+   * @param {string} itemId the ID of the item
+   * @param {string} [isFinished] is the item checked?
+   * @param {string} [title] the new text of the item
+   * @return_type {_id: string}
+   */
   JsonRoutes.add('PUT', '/api/boards/:boardId/cards/:cardId/checklists/:checklistId/items/:itemId', function (req, res) {
     Authentication.checkUserId( req.userId);
 
@@ -229,6 +272,19 @@ if (Meteor.isServer) {
     });
   });
 
+  /**
+   * @operation delete_checklist_item
+   * @tag Checklists
+   * @summary Delete a checklist item
+   *
+   * @description Note: this operation can't be reverted.
+   *
+   * @param {string} boardId the board ID
+   * @param {string} cardId the card ID
+   * @param {string} checklistId the checklist ID
+   * @param {string} itemId the ID of the item to be removed
+   * @return_type {_id: string}
+   */
   JsonRoutes.add('DELETE', '/api/boards/:boardId/cards/:cardId/checklists/:checklistId/items/:itemId', function (req, res) {
     Authentication.checkUserId( req.userId);
     const paramItemId = req.params.itemId;

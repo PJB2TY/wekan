@@ -81,7 +81,7 @@ parts:
     wekan:
         source: .
         plugin: nodejs
-        node-engine: 8.15.0
+        node-engine: 8.15.1
         node-packages:
             - node-gyp
             - node-pre-gyp
@@ -90,15 +90,34 @@ parts:
             - ca-certificates
             - apt-utils
             - python
+            - python3
             - g++
             - capnproto
             - curl
             - execstack
+            - nodejs
+            - npm
         stage-packages:
             - libfontconfig1
         override-build: |
             echo "Cleaning environment first"
             rm -rf ~/.meteor ~/.npm /usr/local/lib/node_modules
+            # Create the OpenAPI specification
+            rm -rf .build
+            mkdir -p .build/python
+            cd .build/python
+            git clone --depth 1 -b master git://github.com/Kronuz/esprima-python
+            cd esprima-python
+            python3 setup.py install
+            cd ../../..
+            mkdir -p ./public/api
+            python3 ./openapi/generate_openapi.py --release $(git describe --tags --abbrev=0) > ./public/api/wekan.yml
+            # we temporary need api2html and mkdirp
+            npm install -g api2html@0.3.0
+            npm install -g mkdirp
+            api2html -c ./public/logo-header.png -o ./public/api/wekan.html ./public/api/wekan.yml
+            npm uninstall -g mkdirp
+            npm uninstall -g api2html
             # Node Fibers 100% CPU usage issue:
             # https://github.com/wekan/wekan-mongodb/issues/2#issuecomment-381453161
             # https://github.com/meteor/meteor/issues/9796#issuecomment-381676326
@@ -157,6 +176,14 @@ parts:
               git clone --depth 1 -b master https://github.com/wekan/wekan-scrollbar.git
               cd ..
             fi
+            if [ ! -d "packages/wekan_accounts-oidc" ]; then
+              cd packages
+              git clone --depth 1 -b master https://github.com/wekan/meteor-accounts-oidc.git
+              mv meteor-accounts-oidc/packages/switch_accounts-oidc wekan_accounts-oidc
+              mv meteor-accounts-oidc/packages/switch_oidc wekan_oidc
+              rm -rf meteor-accounts-oidc
+              cd ..
+            fi
             rm -rf package-lock.json .build
             meteor add standard-minifier-js --allow-superuser
             meteor npm install --allow-superuser
@@ -179,7 +206,7 @@ parts:
             cp -r .build/bundle/* $SNAPCRAFT_PART_INSTALL/
             cp .build/bundle/.node_version.txt $SNAPCRAFT_PART_INSTALL/
             rm $SNAPCRAFT_PART_INSTALL/lib/node_modules/wekan
-            execstack --clear-execstack $SNAPCRAFT_PART_INSTALL/programs/server/npm/node_modules/meteor/rajit_bootstrap3-datepicker/lib/bootstrap-datepicker/node_modules/phantomjs-prebuilt/lib/phantom/bin/phantomjs
+            rm $SNAPCRAFT_PART_INSTALL/programs/server/npm/node_modules/meteor/rajit_bootstrap3-datepicker/lib/bootstrap-datepicker/node_modules/phantomjs-prebuilt/lib/phantom/bin/phantomjs
         organize:
             README: README.wekan
         prime:

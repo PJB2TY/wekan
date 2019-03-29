@@ -5,11 +5,17 @@ Cards = new Mongo.Collection('cards');
 // of comments just to display the number of them in the board view.
 Cards.attachSchema(new SimpleSchema({
   title: {
+    /**
+     * the title of the card
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   archived: {
+    /**
+     * is the card archived
+     */
     type: Boolean,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -18,33 +24,62 @@ Cards.attachSchema(new SimpleSchema({
     },
   },
   parentId: {
+    /**
+     * ID of the parent card
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   listId: {
+    /**
+     * List ID where the card is
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   swimlaneId: {
+    /**
+     * Swimlane ID where the card is
+     */
     type: String,
   },
   // The system could work without this `boardId` information (we could deduce
   // the board identifier from the card), but it would make the system more
   // difficult to manage and less efficient.
   boardId: {
+    /**
+     * Board ID of the card
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   coverId: {
+    /**
+     * Cover ID of the card
+     */
     type: String,
     optional: true,
     defaultValue: '',
 
   },
+  color: {
+    type: String,
+    optional: true,
+    allowedValues: [
+      'white', 'green', 'yellow', 'orange', 'red', 'purple',
+      'blue', 'sky', 'lime', 'pink', 'black',
+      'silver', 'peachpuff', 'crimson', 'plum', 'darkgreen',
+      'slateblue', 'magenta', 'gold', 'navy', 'gray',
+      'saddlebrown', 'paleturquoise', 'mistyrose', 'indigo',
+    ],
+  },
   createdAt: {
+    /**
+     * creation date
+     */
     type: Date,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert) {
@@ -55,6 +90,9 @@ Cards.attachSchema(new SimpleSchema({
     },
   },
   customFields: {
+    /**
+     * list of custom fields
+     */
     type: [Object],
     optional: true,
     defaultValue: [],
@@ -62,11 +100,17 @@ Cards.attachSchema(new SimpleSchema({
   'customFields.$': {
     type: new SimpleSchema({
       _id: {
+        /**
+         * the ID of the related custom field
+         */
         type: String,
         optional: true,
         defaultValue: '',
       },
       value: {
+        /**
+         * value attached to the custom field
+         */
         type: Match.OneOf(String, Number, Boolean, Date),
         optional: true,
         defaultValue: '',
@@ -74,59 +118,95 @@ Cards.attachSchema(new SimpleSchema({
     }),
   },
   dateLastActivity: {
+    /**
+     * Date of last activity
+     */
     type: Date,
     autoValue() {
       return new Date();
     },
   },
   description: {
+    /**
+     * description of the card
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   requestedBy: {
+    /**
+     * who requested the card (ID of the user)
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   assignedBy: {
+    /**
+     * who assigned the card (ID of the user)
+     */
     type: String,
     optional: true,
     defaultValue: '',
   },
   labelIds: {
+    /**
+     * list of labels ID the card has
+     */
     type: [String],
     optional: true,
     defaultValue: [],
   },
   members: {
+    /**
+     * list of members (user IDs)
+     */
     type: [String],
     optional: true,
     defaultValue: [],
   },
   receivedAt: {
+    /**
+     * Date the card was received
+     */
     type: Date,
     optional: true,
   },
   startAt: {
+    /**
+     * Date the card was started to be worked on
+     */
     type: Date,
     optional: true,
   },
   dueAt: {
+    /**
+     * Date the card is due
+     */
     type: Date,
     optional: true,
   },
   endAt: {
+    /**
+     * Date the card ended
+     */
     type: Date,
     optional: true,
   },
   spentTime: {
+    /**
+     * How much time has been spent on this
+     */
     type: Number,
     decimal: true,
     optional: true,
     defaultValue: 0,
   },
   isOvertime: {
+    /**
+     * is the card over time?
+     */
     type: Boolean,
     defaultValue: false,
     optional: true,
@@ -134,6 +214,9 @@ Cards.attachSchema(new SimpleSchema({
   // XXX Should probably be called `authorId`. Is it even needed since we have
   // the `members` field?
   userId: {
+    /**
+     * user ID of the author of the card
+     */
     type: String,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -142,21 +225,33 @@ Cards.attachSchema(new SimpleSchema({
     },
   },
   sort: {
+    /**
+     * Sort value
+     */
     type: Number,
     decimal: true,
     defaultValue: '',
   },
   subtaskSort: {
+    /**
+     * subtask sort value
+     */
     type: Number,
     decimal: true,
     defaultValue: -1,
     optional: true,
   },
   type: {
+    /**
+     * type of the card
+     */
     type: String,
-    defaultValue: '',
+    defaultValue: 'cardType-card',
   },
   linkedId: {
+    /**
+     * ID of the linked card
+     */
     type: String,
     optional: true,
     defaultValue: '',
@@ -177,6 +272,68 @@ Cards.allow({
 });
 
 Cards.helpers({
+  copy(boardId, swimlaneId, listId) {
+    const oldBoard = Boards.findOne(this.boardId);
+    const oldBoardLabels = oldBoard.labels;
+    // Get old label names
+    const oldCardLabels = _.pluck(_.filter(oldBoardLabels, (label) => {
+      return _.contains(this.labelIds, label._id);
+    }), 'name');
+
+    const newBoard = Boards.findOne(boardId);
+    const newBoardLabels = newBoard.labels;
+    const newCardLabels = _.pluck(_.filter(newBoardLabels, (label) => {
+      return _.contains(oldCardLabels, label.name);
+    }), '_id');
+
+    const oldId = this._id;
+    const oldCard = Cards.findOne(oldId);
+
+    // Copy Custom Fields
+    if (oldBoard._id !== boardId) {
+      CustomFields.find({
+        _id: {$in: oldCard.customFields.map((cf) => { return cf._id; })},
+      }).forEach((cf) => {
+        if (!_.contains(cf.boardIds, boardId))
+          cf.addBoard(boardId);
+      });
+    }
+
+    delete this._id;
+    delete this.labelIds;
+    this.labelIds = newCardLabels;
+    this.boardId = boardId;
+    this.swimlaneId = swimlaneId;
+    this.listId = listId;
+    const _id = Cards.insert(this);
+
+    // Copy attachments
+    oldCard.attachments().forEach((att) => {
+      att.cardId = _id;
+      delete att._id;
+      return Attachments.insert(att);
+    });
+
+    // copy checklists
+    Checklists.find({cardId: oldId}).forEach((ch) => {
+      ch.copy(_id);
+    });
+
+    // copy subtasks
+    Cards.find({parentId: oldId}).forEach((subtask) => {
+      subtask.parentId = _id;
+      subtask._id = null;
+      Cards.insert(subtask);
+    });
+
+    // copy card comments
+    CardComments.find({cardId: oldId}).forEach((cmt) => {
+      cmt.copy(_id);
+    });
+
+    return _id;
+  },
+
   list() {
     return Lists.findOne(this.listId);
   },
@@ -326,7 +483,7 @@ Cards.helpers({
 
     // get all definitions
     const definitions = CustomFields.find({
-      boardId: this.boardId,
+      boardIds: {$in: [this.boardId]},
     }).fetch();
 
     // match right definition to each field
@@ -335,6 +492,9 @@ Cards.helpers({
       const definition = definitions.find((definition) => {
         return definition._id === customField._id;
       });
+      if (!definition) {
+        return {};
+      }
       //search for "True Value" which is for DropDowns other then the Value (which is the id)
       let trueValue = customField.value;
       if (definition.settings.dropdownItems && definition.settings.dropdownItems.length > 0) {
@@ -351,7 +511,12 @@ Cards.helpers({
         definition,
       };
     });
+  },
 
+  colorClass() {
+    if (this.color)
+      return this.color;
+    return '';
   },
 
   absoluteUrl() {
@@ -830,6 +995,10 @@ Cards.helpers({
       return this.assignedBy;
     }
   },
+
+  isTemplateCard() {
+    return this.type === 'template-card';
+  },
 });
 
 Cards.mutations({
@@ -863,50 +1032,41 @@ Cards.mutations({
     };
   },
 
-  setTitle(title) {
-    return {
-      $set: {
-        title,
-      },
-    };
-  },
+  move(boardId, swimlaneId, listId, sort) {
+    // Copy Custom Fields
+    if (this.boardId !== boardId) {
+      CustomFields.find({
+        _id: {$in: this.customFields.map((cf) => { return cf._id; })},
+      }).forEach((cf) => {
+        if (!_.contains(cf.boardIds, boardId))
+          cf.addBoard(boardId);
+      });
+    }
 
-  setDescription(description) {
-    return {
-      $set: {
-        description,
-      },
-    };
-  },
+    // Get label names
+    const oldBoard = Boards.findOne(this.boardId);
+    const oldBoardLabels = oldBoard.labels;
+    const oldCardLabels = _.pluck(_.filter(oldBoardLabels, (label) => {
+      return _.contains(this.labelIds, label._id);
+    }), 'name');
 
-  setRequestedBy(requestedBy) {
-    return {
-      $set: {
-        requestedBy,
-      },
-    };
-  },
+    const newBoard = Boards.findOne(boardId);
+    const newBoardLabels = newBoard.labels;
+    const newCardLabelIds = _.pluck(_.filter(newBoardLabels, (label) => {
+      return label.name && _.contains(oldCardLabels, label.name);
+    }), '_id');
 
-  setAssignedBy(assignedBy) {
-    return {
-      $set: {
-        assignedBy,
-      },
-    };
-  },
-
-  move(swimlaneId, listId, sortIndex) {
-    const list = Lists.findOne(listId);
     const mutatedFields = {
+      boardId,
       swimlaneId,
       listId,
-      boardId: list.boardId,
-      sort: sortIndex,
+      sort,
+      labelIds: newCardLabelIds,
     };
 
-    return {
+    Cards.update(this._id, {
       $set: mutatedFields,
-    };
+    });
   },
 
   addLabel(labelId) {
@@ -931,6 +1091,17 @@ Cards.mutations({
     } else {
       return this.addLabel(labelId);
     }
+  },
+
+  setColor(newColor) {
+    if (newColor === 'white') {
+      newColor = null;
+    }
+    return {
+      $set: {
+        color: newColor,
+      },
+    };
   },
 
   assignMember(memberId) {
@@ -1117,9 +1288,48 @@ Cards.mutations({
 
 //FUNCTIONS FOR creation of Activities
 
-function cardMove(userId, doc, fieldNames, oldListId, oldSwimlaneId) {
-  if ((_.contains(fieldNames, 'listId') && doc.listId !== oldListId) ||
-      (_.contains(fieldNames, 'swimlaneId') && doc.swimlaneId !== oldSwimlaneId)){
+function updateActivities(doc, fieldNames, modifier) {
+  if (_.contains(fieldNames, 'labelIds') && _.contains(fieldNames, 'boardId')) {
+    Activities.find({
+      activityType: 'addedLabel',
+      cardId: doc._id,
+    }).forEach((a) => {
+      const lidx = doc.labelIds.indexOf(a.labelId);
+      if (lidx !== -1 && modifier.$set.labelIds.length > lidx) {
+        Activities.update(a._id, {
+          $set: {
+            labelId: modifier.$set.labelIds[doc.labelIds.indexOf(a.labelId)],
+            boardId: modifier.$set.boardId,
+          },
+        });
+      } else {
+        Activities.remove(a._id);
+      }
+    });
+  } else if (_.contains(fieldNames, 'boardId')) {
+    Activities.remove({
+      activityType: 'addedLabel',
+      cardId: doc._id,
+    });
+  }
+}
+
+function cardMove(userId, doc, fieldNames, oldListId, oldSwimlaneId, oldBoardId) {
+  if (_.contains(fieldNames, 'boardId') && (doc.boardId !== oldBoardId)) {
+    Activities.insert({
+      userId,
+      activityType: 'moveCardBoard',
+      boardName: Boards.findOne(doc.boardId).title,
+      boardId: doc.boardId,
+      oldBoardId,
+      oldBoardName: Boards.findOne(oldBoardId).title,
+      cardId: doc._id,
+      swimlaneName: Swimlanes.findOne(doc.swimlaneId).title,
+      swimlaneId: doc.swimlaneId,
+      oldSwimlaneId,
+    });
+  } else if ((_.contains(fieldNames, 'listId') && doc.listId !== oldListId) ||
+    (_.contains(fieldNames, 'swimlaneId') && doc.swimlaneId !== oldSwimlaneId)){
     Activities.insert({
       userId,
       oldListId,
@@ -1230,6 +1440,56 @@ function cardLabels(userId, doc, fieldNames, modifier) {
   }
 }
 
+function cardCustomFields(userId, doc, fieldNames, modifier) {
+  if (!_.contains(fieldNames, 'customFields'))
+    return;
+
+  // Say hello to the new customField value
+  if (modifier.$set) {
+    _.each(modifier.$set, (value, key) => {
+      if (key.startsWith('customFields')) {
+        const dotNotation = key.split('.');
+
+        // only individual changes are registered
+        if (dotNotation.length > 1) {
+          const customFieldId = doc.customFields[dotNotation[1]]._id;
+          const act = {
+            userId,
+            customFieldId,
+            value,
+            activityType: 'setCustomField',
+            boardId: doc.boardId,
+            cardId: doc._id,
+          };
+          Activities.insert(act);
+        }
+      }
+    });
+  }
+
+  // Say goodbye to the former customField value
+  if (modifier.$unset) {
+    _.each(modifier.$unset, (value, key) => {
+      if (key.startsWith('customFields')) {
+        const dotNotation = key.split('.');
+
+        // only individual changes are registered
+        if (dotNotation.length > 1) {
+          const customFieldId = doc.customFields[dotNotation[1]]._id;
+          const act = {
+            userId,
+            customFieldId,
+            activityType: 'unsetCustomField',
+            boardId: doc.boardId,
+            cardId: doc._id,
+          };
+          Activities.insert(act);
+        }
+      }
+    });
+  }
+}
+
 function cardCreation(userId, doc) {
   Activities.insert({
     userId,
@@ -1251,8 +1511,8 @@ function cardRemover(userId, doc) {
   Checklists.remove({
     cardId: doc._id,
   });
-  Subtasks.remove({
-    cardId: doc._id,
+  Cards.remove({
+    parentId: doc._id,
   });
   CardComments.remove({
     cardId: doc._id,
@@ -1288,17 +1548,24 @@ if (Meteor.isServer) {
   Cards.after.update(function(userId, doc, fieldNames) {
     const oldListId = this.previous.listId;
     const oldSwimlaneId = this.previous.swimlaneId;
-    cardMove(userId, doc, fieldNames, oldListId, oldSwimlaneId);
+    const oldBoardId = this.previous.boardId;
+    cardMove(userId, doc, fieldNames, oldListId, oldSwimlaneId, oldBoardId);
   });
 
   // Add a new activity if we add or remove a member to the card
   Cards.before.update((userId, doc, fieldNames, modifier) => {
     cardMembers(userId, doc, fieldNames, modifier);
+    updateActivities(doc, fieldNames, modifier);
   });
 
   // Add a new activity if we add or remove a label to the card
   Cards.before.update((userId, doc, fieldNames, modifier) => {
     cardLabels(userId, doc, fieldNames, modifier);
+  });
+
+  // Add a new activity if we edit a custom field
+  Cards.before.update((userId, doc, fieldNames, modifier) => {
+    cardCustomFields(userId, doc, fieldNames, modifier);
   });
 
   // Remove all activities associated with a card if we remove the card
@@ -1309,6 +1576,17 @@ if (Meteor.isServer) {
 }
 //SWIMLANES REST API
 if (Meteor.isServer) {
+  /**
+   * @operation get_swimlane_cards
+   * @summary get all cards attached to a swimlane
+   *
+   * @param {string} boardId the board ID
+   * @param {string} swimlaneId the swimlane ID
+   * @return_type [{_id: string,
+   *                title: string,
+   *                description: string,
+   *                listId: string}]
+   */
   JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes/:swimlaneId/cards', function(req, res) {
     const paramBoardId = req.params.boardId;
     const paramSwimlaneId = req.params.swimlaneId;
@@ -1332,6 +1610,16 @@ if (Meteor.isServer) {
 }
 //LISTS REST API
 if (Meteor.isServer) {
+  /**
+   * @operation get_all_cards
+   * @summary Get all Cards attached to a List
+   *
+   * @param {string} boardId the board ID
+   * @param {string} listId the list ID
+   * @return_type [{_id: string,
+   *                title: string,
+   *                description: string}]
+   */
   JsonRoutes.add('GET', '/api/boards/:boardId/lists/:listId/cards', function(req, res) {
     const paramBoardId = req.params.boardId;
     const paramListId = req.params.listId;
@@ -1352,6 +1640,15 @@ if (Meteor.isServer) {
     });
   });
 
+  /**
+   * @operation get_card
+   * @summary Get a Card
+   *
+   * @param {string} boardId the board ID
+   * @param {string} listId the list ID of the card
+   * @param {string} cardId the card ID
+   * @return_type Cards
+   */
   JsonRoutes.add('GET', '/api/boards/:boardId/lists/:listId/cards/:cardId', function(req, res) {
     const paramBoardId = req.params.boardId;
     const paramListId = req.params.listId;
@@ -1368,10 +1665,27 @@ if (Meteor.isServer) {
     });
   });
 
+  /**
+   * @operation new_card
+   * @summary Create a new Card
+   *
+   * @param {string} boardId the board ID of the new card
+   * @param {string} listId the list ID of the new card
+   * @param {string} authorID the user ID of the person owning the card
+   * @param {string} title the title of the new card
+   * @param {string} description the description of the new card
+   * @param {string} swimlaneId the swimlane ID of the new card
+   * @param {string} [members] the member IDs list of the new card
+   * @return_type {_id: string}
+   */
   JsonRoutes.add('POST', '/api/boards/:boardId/lists/:listId/cards', function(req, res) {
     Authentication.checkUserId(req.userId);
     const paramBoardId = req.params.boardId;
     const paramListId = req.params.listId;
+    const currentCards = Cards.find({
+      listId: paramListId,
+      archived: false,
+    }, { sort: ['sort'] });
     const check = Users.findOne({
       _id: req.body.authorId,
     });
@@ -1384,7 +1698,7 @@ if (Meteor.isServer) {
         description: req.body.description,
         userId: req.body.authorId,
         swimlaneId: req.body.swimlaneId,
-        sort: 0,
+        sort: currentCards.count(),
         members,
       });
       JsonRoutes.sendResult(res, {
@@ -1406,6 +1720,50 @@ if (Meteor.isServer) {
     }
   });
 
+  /*
+   * Note for the JSDoc:
+   * 'list' will be interpreted as the path parameter
+   * 'listID' will be interpreted as the body parameter
+   */
+  /**
+   * @operation edit_card
+   * @summary Edit Fields in a Card
+   *
+   * @description Edit a card
+   *
+   * The color has to be chosen between `white`, `green`, `yellow`, `orange`,
+   * `red`, `purple`, `blue`, `sky`, `lime`, `pink`, `black`, `silver`,
+   * `peachpuff`, `crimson`, `plum`, `darkgreen`, `slateblue`, `magenta`,
+   * `gold`, `navy`, `gray`, `saddlebrown`, `paleturquoise`, `mistyrose`,
+   * `indigo`:
+   *
+   * <img src="/card-colors.png" width="40%" alt="Wekan card colors" />
+   *
+   * Note: setting the color to white has the same effect than removing it.
+   *
+   * @param {string} boardId the board ID of the card
+   * @param {string} list the list ID of the card
+   * @param {string} cardId the ID of the card
+   * @param {string} [title] the new title of the card
+   * @param {string} [listId] the new list ID of the card (move operation)
+   * @param {string} [description] the new description of the card
+   * @param {string} [authorId] change the owner of the card
+   * @param {string} [labelIds] the new list of label IDs attached to the card
+   * @param {string} [swimlaneId] the new swimlane ID of the card
+   * @param {string} [members] the new list of member IDs attached to the card
+   * @param {string} [requestedBy] the new requestedBy field of the card
+   * @param {string} [assignedBy] the new assignedBy field of the card
+   * @param {string} [receivedAt] the new receivedAt field of the card
+   * @param {string} [assignBy] the new assignBy field of the card
+   * @param {string} [startAt] the new startAt field of the card
+   * @param {string} [dueAt] the new dueAt field of the card
+   * @param {string} [endAt] the new endAt field of the card
+   * @param {string} [spentTime] the new spentTime field of the card
+   * @param {boolean} [isOverTime] the new isOverTime field of the card
+   * @param {string} [customFields] the new customFields value of the card
+   * @param {string} [color] the new color of the card
+   * @return_type {_id: string}
+   */
   JsonRoutes.add('PUT', '/api/boards/:boardId/lists/:listId/cards/:cardId', function(req, res) {
     Authentication.checkUserId(req.userId);
     const paramBoardId = req.params.boardId;
@@ -1458,6 +1816,11 @@ if (Meteor.isServer) {
           description: newDescription,
         },
       });
+    }
+    if (req.body.hasOwnProperty('color')) {
+      const newColor = req.body.color;
+      Cards.direct.update({_id: paramCardId, listId: paramListId, boardId: paramBoardId, archived: false},
+        {$set: {color: newColor}});
     }
     if (req.body.hasOwnProperty('labelIds')) {
       let newlabelIds = req.body.labelIds;
@@ -1551,6 +1914,18 @@ if (Meteor.isServer) {
     });
   });
 
+  /**
+   * @operation delete_card
+   * @summary Delete a card from a board
+   *
+   * @description This operation **deletes** a card, and therefore the card
+   * is not put in the recycle bin.
+   *
+   * @param {string} boardId the board ID of the card
+   * @param {string} list the list ID of the card
+   * @param {string} cardId the ID of the card
+   * @return_type {_id: string}
+   */
   JsonRoutes.add('DELETE', '/api/boards/:boardId/lists/:listId/cards/:cardId', function(req, res) {
     Authentication.checkUserId(req.userId);
     const paramBoardId = req.params.boardId;

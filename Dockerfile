@@ -1,7 +1,8 @@
-FROM debian:buster-slim
+FROM ubuntu:cosmic
 LABEL maintainer="wekan"
 
 # Declare Arguments
+ARG DEBUG
 ARG NODE_VERSION
 ARG METEOR_RELEASE
 ARG METEOR_EDGE
@@ -11,6 +12,13 @@ ARG FIBERS_VERSION
 ARG ARCHITECTURE
 ARG SRC_PATH
 ARG WITH_API
+ARG ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURES_BEFORE
+ARG ACCOUNTS_LOCKOUT_KNOWN_USERS_PERIOD
+ARG ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURE_WINDOW
+ARG ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE
+ARG ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD
+ARG ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW
+ARG EMAIL_NOTIFICATION_TIMEOUT
 ARG MATOMO_ADDRESS
 ARG MATOMO_SITE_ID
 ARG MATOMO_DO_NOT_TRACK
@@ -19,12 +27,17 @@ ARG BROWSER_POLICY_ENABLED
 ARG TRUSTED_URL
 ARG WEBHOOKS_ATTRIBUTES
 ARG OAUTH2_ENABLED
+ARG OAUTH2_LOGIN_STYLE
 ARG OAUTH2_CLIENT_ID
 ARG OAUTH2_SECRET
 ARG OAUTH2_SERVER_URL
 ARG OAUTH2_AUTH_ENDPOINT
 ARG OAUTH2_USERINFO_ENDPOINT
 ARG OAUTH2_TOKEN_ENDPOINT
+ARG OAUTH2_ID_MAP
+ARG OAUTH2_USERNAME_MAP
+ARG OAUTH2_FULLNAME_MAP
+ARG OAUTH2_EMAIL_MAP
 ARG LDAP_ENABLE
 ARG LDAP_PORT
 ARG LDAP_HOST
@@ -60,11 +73,21 @@ ARG LDAP_UNIQUE_IDENTIFIER_FIELD
 ARG LDAP_UTF8_NAMES_SLUGIFY
 ARG LDAP_USERNAME_FIELD
 ARG LDAP_FULLNAME_FIELD
+ARG LDAP_EMAIL_FIELD
+ARG LDAP_EMAIL_MATCH_ENABLE
+ARG LDAP_EMAIL_MATCH_REQUIRE
+ARG LDAP_EMAIL_MATCH_VERIFIED
 ARG LDAP_MERGE_EXISTING_USERS
 ARG LDAP_SYNC_USER_DATA
 ARG LDAP_SYNC_USER_DATA_FIELDMAP
 ARG LDAP_SYNC_GROUP_ROLES
 ARG LDAP_DEFAULT_DOMAIN
+ARG LDAP_SYNC_ADMIN_STATUS
+ARG LDAP_SYNC_ADMIN_GROUPS
+ARG HEADER_LOGIN_ID
+ARG HEADER_LOGIN_FIRSTNAME
+ARG HEADER_LOGIN_LASTNAME
+ARG HEADER_LOGIN_EMAIL
 ARG LOGOUT_WITH_TIMER
 ARG LOGOUT_IN
 ARG LOGOUT_ON_HOURS
@@ -75,8 +98,9 @@ ARG DEFAULT_AUTHENTICATION_METHOD
 # Set the environment variables (defaults where required)
 # DOES NOT WORK: paxctl fix for alpine linux: https://github.com/wekan/wekan/issues/1303
 # ENV BUILD_DEPS="paxctl"
-ENV BUILD_DEPS="apt-utils bsdtar gnupg gosu wget curl bzip2 build-essential python git ca-certificates gcc-7" \
-    NODE_VERSION=v8.15.0 \
+ENV BUILD_DEPS="apt-utils bsdtar gnupg gosu wget curl bzip2 build-essential python python3 python3-distutils git ca-certificates gcc-7" \
+    DEBUG=false \
+    NODE_VERSION=v8.15.1 \
     METEOR_RELEASE=1.6.0.1 \
     USE_EDGE=false \
     METEOR_EDGE=1.5-beta.17 \
@@ -85,6 +109,13 @@ ENV BUILD_DEPS="apt-utils bsdtar gnupg gosu wget curl bzip2 build-essential pyth
     ARCHITECTURE=linux-x64 \
     SRC_PATH=./ \
     WITH_API=true \
+    ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURES_BEFORE=3 \
+    ACCOUNTS_LOCKOUT_KNOWN_USERS_PERIOD=60 \
+    ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURE_WINDOW=15 \
+    ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3 \
+    ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60 \
+    ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15 \
+    EMAIL_NOTIFICATION_TIMEOUT=30000 \
     MATOMO_ADDRESS="" \
     MATOMO_SITE_ID="" \
     MATOMO_DO_NOT_TRACK=true \
@@ -93,12 +124,17 @@ ENV BUILD_DEPS="apt-utils bsdtar gnupg gosu wget curl bzip2 build-essential pyth
     TRUSTED_URL="" \
     WEBHOOKS_ATTRIBUTES="" \
     OAUTH2_ENABLED=false \
+    OAUTH2_LOGIN_STYLE=redirect \
     OAUTH2_CLIENT_ID="" \
     OAUTH2_SECRET="" \
     OAUTH2_SERVER_URL="" \
     OAUTH2_AUTH_ENDPOINT="" \
     OAUTH2_USERINFO_ENDPOINT="" \
     OAUTH2_TOKEN_ENDPOINT="" \
+    OAUTH2_ID_MAP="" \
+    OAUTH2_USERNAME_MAP="" \
+    OAUTH2_FULLNAME_MAP="" \
+    OAUTH2_EMAIL_MAP="" \
     LDAP_ENABLE=false \
     LDAP_PORT=389 \
     LDAP_HOST="" \
@@ -135,10 +171,20 @@ ENV BUILD_DEPS="apt-utils bsdtar gnupg gosu wget curl bzip2 build-essential pyth
     LDAP_USERNAME_FIELD="" \
     LDAP_FULLNAME_FIELD="" \
     LDAP_MERGE_EXISTING_USERS=false \
+    LDAP_EMAIL_FIELD="" \
+    LDAP_EMAIL_MATCH_ENABLE=false \
+    LDAP_EMAIL_MATCH_REQUIRE=false \
+    LDAP_EMAIL_MATCH_VERIFIED=false \
     LDAP_SYNC_USER_DATA=false \
     LDAP_SYNC_USER_DATA_FIELDMAP="" \
     LDAP_SYNC_GROUP_ROLES="" \
     LDAP_DEFAULT_DOMAIN="" \
+    LDAP_SYNC_ADMIN_STATUS="" \
+    LDAP_SYNC_ADMIN_GROUPS="" \
+    HEADER_LOGIN_ID="" \
+    HEADER_LOGIN_FIRSTNAME="" \
+    HEADER_LOGIN_LASTNAME="" \
+    HEADER_LOGIN_EMAIL="" \
     LOGOUT_WITH_TIMER=false \
     LOGOUT_IN="" \
     LOGOUT_ON_HOURS="" \
@@ -247,16 +293,33 @@ RUN \
     gosu wekan:wekan git clone --depth 1 -b master git://github.com/wekan/meteor-accounts-cas.git && \
     gosu wekan:wekan git clone --depth 1 -b master git://github.com/wekan/wekan-ldap.git && \
     gosu wekan:wekan git clone --depth 1 -b master git://github.com/wekan/wekan-scrollbar.git && \
+    gosu wekan:wekan git clone --depth 1 -b master git://github.com/wekan/meteor-accounts-oidc.git && \
+    gosu wekan:wekan mv meteor-accounts-oidc/packages/switch_accounts-oidc wekan_accounts-oidc && \
+    gosu wekan:wekan mv meteor-accounts-oidc/packages/switch_oidc wekan_oidc && \
+    gosu wekan:wekan rm -rf meteor-accounts-oidc && \
     sed -i 's/api\.versionsFrom/\/\/api.versionsFrom/' /home/wekan/app/packages/meteor-useraccounts-core/package.js && \
     cd /home/wekan/.meteor && \
     gosu wekan:wekan /home/wekan/.meteor/meteor -- help; \
     \
+    # extract the OpenAPI specification
+    npm install -g api2html@0.3.0 && \
+    mkdir -p /home/wekan/python && \
+    chown wekan:wekan --recursive /home/wekan/python && \
+    cd /home/wekan/python && \
+    gosu wekan:wekan git clone --depth 1 -b master git://github.com/Kronuz/esprima-python && \
+    cd /home/wekan/python/esprima-python && \
+    python3 setup.py install --record files.txt && \
+    cd /home/wekan/app &&\
+    mkdir -p ./public/api && \
+    python3 ./openapi/generate_openapi.py --release $(git describe --tags --abbrev=0) > ./public/api/wekan.yml && \
+    /opt/nodejs/bin/api2html -c ./public/logo-header.png -o ./public/api/wekan.html ./public/api/wekan.yml; \
     # Build app
     cd /home/wekan/app && \
     gosu wekan:wekan /home/wekan/.meteor/meteor add standard-minifier-js && \
     gosu wekan:wekan /home/wekan/.meteor/meteor npm install && \
     gosu wekan:wekan /home/wekan/.meteor/meteor build --directory /home/wekan/app_build && \
     cp /home/wekan/app/fix-download-unicode/cfs_access-point.txt /home/wekan/app_build/bundle/programs/server/packages/cfs_access-point.js && \
+    rm /home/wekan/app_build/bundle/programs/server/npm/node_modules/meteor/rajit_bootstrap3-datepicker/lib/bootstrap-datepicker/node_modules/phantomjs-prebuilt/lib/phantom/bin/phantomjs && \
     chown wekan:wekan /home/wekan/app_build/bundle/programs/server/packages/cfs_access-point.js && \
     #Removed binary version of bcrypt because of security vulnerability that is not fixed yet.
     #https://github.com/wekan/wekan/commit/4b2010213907c61b0e0482ab55abb06f6a668eac
@@ -275,10 +338,13 @@ RUN \
     # Cleanup
     apt-get remove --purge -y ${BUILD_DEPS} && \
     apt-get autoremove -y && \
+    npm uninstall -g api2html &&\
     rm -R /var/lib/apt/lists/* && \
     rm -R /home/wekan/.meteor && \
     rm -R /home/wekan/app && \
     rm -R /home/wekan/app_build && \
+    cat /home/wekan/python/esprima-python/files.txt | xargs rm -R && \
+    rm -R /home/wekan/python && \
     rm /home/wekan/install_meteor.sh
 
 ENV PORT=8080

@@ -1,6 +1,11 @@
 const subManager = new SubsManager();
 const { calculateIndexData, enableClickOnTouch } = Utils;
 
+let cardColors;
+Meteor.startup(() => {
+  cardColors = Cards.simpleSchema()._schema.color.allowedValues;
+});
+
 BlazeComponent.extendComponent({
   mixins() {
     return [Mixins.InfiniteScrolling, Mixins.PerfectScrollbar];
@@ -73,14 +78,13 @@ BlazeComponent.extendComponent({
     //Scroll top
     const cardViewStartTop = $cardView.offset().top;
     const cardContainerScrollTop = $cardContainer.scrollTop();
+
     let topOffset = false;
-    if(cardViewStartTop < 0){
-      topOffset = 0;
-    } else if(cardViewStartTop - cardContainerScrollTop > 100) {
-      topOffset = cardViewStartTop - cardContainerScrollTop - 100;
+    if(cardViewStartTop !== 100){
+      topOffset = cardViewStartTop - 100;
     }
     if(topOffset !== false) {
-      bodyBoardComponent.scrollTop(topOffset);
+      bodyBoardComponent.scrollTop(cardContainerScrollTop + topOffset);
     }
 
   },
@@ -337,6 +341,7 @@ Template.cardDetailsActionsPopup.events({
   'click .js-move-card': Popup.open('moveCard'),
   'click .js-copy-card': Popup.open('copyCard'),
   'click .js-copy-checklist-cards': Popup.open('copyChecklistToManyCards'),
+  'click .js-set-card-color': Popup.open('setCardColor'),
   'click .js-move-card-to-top' (evt) {
     evt.preventDefault();
     const minOrder = _.min(this.list().cards(this.swimlaneId).map((c) => c.sort));
@@ -407,11 +412,13 @@ Template.moveCardPopup.events({
     // XXX We should *not* get the currentCard from the global state, but
     // instead from a “component” state.
     const card = Cards.findOne(Session.get('currentCard'));
+    const bSelect = $('.js-select-boards')[0];
+    const boardId = bSelect.options[bSelect.selectedIndex].value;
     const lSelect = $('.js-select-lists')[0];
-    const newListId = lSelect.options[lSelect.selectedIndex].value;
+    const listId = lSelect.options[lSelect.selectedIndex].value;
     const slSelect = $('.js-select-swimlanes')[0];
-    card.swimlaneId = slSelect.options[slSelect.selectedIndex].value;
-    card.move(card.swimlaneId, newListId, 0);
+    const swimlaneId = slSelect.options[slSelect.selectedIndex].value;
+    card.move(boardId, swimlaneId, listId, 0);
     Popup.close();
   },
 });
@@ -425,6 +432,7 @@ BlazeComponent.extendComponent({
     const boards = Boards.find({
       archived: false,
       'members.userId': Meteor.userId(),
+      _id: {$ne: Meteor.user().getTemplatesBoardId()},
     }, {
       sort: ['title'],
     });
@@ -451,32 +459,15 @@ BlazeComponent.extendComponent({
   },
 }).register('boardsAndLists');
 
-
-function cloneCheckList(_id, checklist) {
-  'use strict';
-  const checklistId = checklist._id;
-  checklist.cardId = _id;
-  checklist._id = null;
-  const newChecklistId = Checklists.insert(checklist);
-  ChecklistItems.find({checklistId}).forEach(function(item) {
-    item._id = null;
-    item.checklistId = newChecklistId;
-    item.cardId = _id;
-    ChecklistItems.insert(item);
-  });
-}
-
 Template.copyCardPopup.events({
   'click .js-done'() {
     const card = Cards.findOne(Session.get('currentCard'));
-    const oldId = card._id;
-    card._id = null;
     const lSelect = $('.js-select-lists')[0];
-    card.listId = lSelect.options[lSelect.selectedIndex].value;
+    listId = lSelect.options[lSelect.selectedIndex].value;
     const slSelect = $('.js-select-swimlanes')[0];
-    card.swimlaneId = slSelect.options[slSelect.selectedIndex].value;
+    const swimlaneId = slSelect.options[slSelect.selectedIndex].value;
     const bSelect = $('.js-select-boards')[0];
-    card.boardId = bSelect.options[bSelect.selectedIndex].value;
+    const boardId = bSelect.options[bSelect.selectedIndex].value;
     const textarea = $('#copy-card-title');
     const title = textarea.val().trim();
     // insert new card to the bottom of new list
@@ -485,38 +476,13 @@ Template.copyCardPopup.events({
     if (title) {
       card.title = title;
       card.coverId = '';
-      const _id = Cards.insert(card);
+      const _id = card.copy(boardId, swimlaneId, listId);
       // In case the filter is active we need to add the newly inserted card in
       // the list of exceptions -- cards that are not filtered. Otherwise the
       // card will disappear instantly.
       // See https://github.com/wekan/wekan/issues/80
       Filter.addException(_id);
 
-      // copy checklists
-      let cursor = Checklists.find({cardId: oldId});
-      cursor.forEach(function() {
-        cloneCheckList(_id, arguments[0]);
-      });
-
-      // copy subtasks
-      cursor = Cards.find({parentId: oldId});
-      cursor.forEach(function() {
-        'use strict';
-        const subtask = arguments[0];
-        subtask.parentId = _id;
-        subtask._id = null;
-        /* const newSubtaskId = */ Cards.insert(subtask);
-      });
-
-      // copy card comments
-      cursor = CardComments.find({cardId: oldId});
-      cursor.forEach(function () {
-        'use strict';
-        const comment = arguments[0];
-        comment.cardId = _id;
-        comment._id = null;
-        CardComments.insert(comment);
-      });
       Popup.close();
     }
   },
@@ -553,9 +519,8 @@ Template.copyChecklistToManyCardsPopup.events({
         Filter.addException(_id);
 
         // copy checklists
-        let cursor = Checklists.find({cardId: oldId});
-        cursor.forEach(function() {
-          cloneCheckList(_id, arguments[0]);
+        Checklists.find({cardId: oldId}).forEach((ch) => {
+          ch.copy(_id);
         });
 
         // copy subtasks
@@ -569,13 +534,8 @@ Template.copyChecklistToManyCardsPopup.events({
         });
 
         // copy card comments
-        cursor = CardComments.find({cardId: oldId});
-        cursor.forEach(function () {
-          'use strict';
-          const comment = arguments[0];
-          comment.cardId = _id;
-          comment._id = null;
-          CardComments.insert(comment);
+        CardComments.find({cardId: oldId}).forEach((cmt) => {
+          cmt.copy(_id);
         });
       }
       Popup.close();
@@ -586,11 +546,48 @@ Template.copyChecklistToManyCardsPopup.events({
 BlazeComponent.extendComponent({
   onCreated() {
     this.currentCard = this.currentData();
+    this.currentColor = new ReactiveVar(this.currentCard.color);
+  },
+
+  colors() {
+    return cardColors.map((color) => ({ color, name: '' }));
+  },
+
+  isSelected(color) {
+    if (this.currentColor.get() === null) {
+      return color === 'white';
+    }
+    return this.currentColor.get() === color;
+  },
+
+  events() {
+    return [{
+      'click .js-palette-color'() {
+        this.currentColor.set(this.currentData().color);
+      },
+      'click .js-submit' () {
+        this.currentCard.setColor(this.currentColor.get());
+        Popup.close();
+      },
+      'click .js-remove-color'() {
+        this.currentCard.setColor(null);
+        Popup.close();
+      },
+    }];
+  },
+}).register('setCardColorPopup');
+
+BlazeComponent.extendComponent({
+  onCreated() {
+    this.currentCard = this.currentData();
+    this.parentBoard = new ReactiveVar(null);
     this.parentCard = this.currentCard.parentCard();
     if (this.parentCard) {
-      this.parentBoard = this.parentCard.board();
+      const list = $('.js-field-parent-card');
+      list.val(this.parentCard._id);
+      this.parentBoard.set(this.parentCard.board()._id);
     } else {
-      this.parentBoard = null;
+      this.parentBoard.set(null);
     }
   },
 
@@ -598,6 +595,9 @@ BlazeComponent.extendComponent({
     const boards = Boards.find({
       archived: false,
       'members.userId': Meteor.userId(),
+      _id: {
+        $ne: Meteor.user().getTemplatesBoardId(),
+      },
     }, {
       sort: ['title'],
     });
@@ -605,8 +605,12 @@ BlazeComponent.extendComponent({
   },
 
   cards() {
-    if (this.parentBoard) {
-      return this.parentBoard.cards();
+    const currentId = Session.get('currentCard');
+    if (this.parentBoard.get()) {
+      return Cards.find({
+        boardId: this.parentBoard.get(),
+        _id: {$ne: currentId},
+      });
     } else {
       return [];
     }
@@ -614,8 +618,8 @@ BlazeComponent.extendComponent({
 
   isParentBoard() {
     const board = this.currentData();
-    if (this.parentBoard) {
-      return board._id === this.parentBoard;
+    if (this.parentBoard.get()) {
+      return board._id === this.parentBoard.get();
     }
     return false;
   },
@@ -629,11 +633,10 @@ BlazeComponent.extendComponent({
   },
 
   setParentCardId(cardId) {
-    if (cardId === 'null') {
-      cardId = null;
-      this.parentCard = null;
-    } else {
+    if (cardId) {
       this.parentCard = Cards.findOne(cardId);
+    } else {
+      this.parentCard = null;
     }
     this.currentCard.setParentId(cardId);
   },
@@ -670,23 +673,14 @@ BlazeComponent.extendComponent({
       'change .js-field-parent-board'(evt) {
         const selection = $(evt.currentTarget).val();
         const list = $('.js-field-parent-card');
-        list.empty();
         if (selection === 'none') {
-          this.parentBoard = null;
-          list.prop('disabled', true);
+          this.parentBoard.set(null);
         } else {
-          this.parentBoard = Boards.findOne(selection);
-          this.parentBoard.cards().forEach(function(card) {
-            list.append(
-              $('<option></option>').val(card._id).html(card.title)
-            );
-          });
+          subManager.subscribe('board', $(evt.currentTarget).val());
+          this.parentBoard.set(selection);
           list.prop('disabled', false);
         }
-        list.append(
-          `<option value='none' selected='selected'>${TAPi18n.__('custom-field-dropdown-none')}</option>`
-        );
-        this.setParentCardId('null');
+        this.setParentCardId(null);
       },
       'change .js-field-parent-card'(evt) {
         const selection = $(evt.currentTarget).val();

@@ -1,6 +1,6 @@
 template(name="cardDetails")
   section.card-details.js-card-details.js-perfect-scrollbar: .card-details-canvas
-    .card-details-header
+    .card-details-header(class='{{#if colorClass}}card-details-{{colorClass}}{{/if}}')
       +inlinedForm(classNames="js-card-details-title")
         +editCardTitleForm
       else
@@ -19,16 +19,14 @@ template(name="cardDetails")
             a.js-parent-card(href=linkForCard) {{title}}
           // else
             {{_ 'top-level-card'}}
-        unless isSandstorm
-          if isLinkedCard
-            h3.linked-card-location
-              +viewer
-                | {{getBoardTitle}} > {{getTitle}}
+        if isLinkedCard
+          h3.linked-card-location
+            +viewer
+              | {{getBoardTitle}} > {{getTitle}}
 
     if getArchived
       if isLinkedBoard
-        unless isSandstorm
-          p.warning {{_ 'board-archived'}}
+        p.warning {{_ 'board-archived'}}
       else
         p.warning {{_ 'card-archived'}}
 
@@ -192,11 +190,9 @@ template(name="cardDetails")
     unless currentUser.isNoComments
       if isLoaded.get
         if isLinkedCard
-          unless isSandstorm
-            +activities(card=this mode="linkedcard")
+          +activities(card=this mode="linkedcard")
         else if isLinkedBoard
-          unless isSandstorm
-            +activities(card=this mode="linkedboard")
+          +activities(card=this mode="linkedboard")
         else
           +activities(card=this mode="card")
 
@@ -234,6 +230,7 @@ template(name="cardDetailsActionsPopup")
       li: a.js-due-date {{_ 'editCardDueDatePopup-title'}}
       li: a.js-end-date {{_ 'editCardEndDatePopup-title'}}
       li: a.js-spent-time {{_ 'editCardSpentTimePopup-title'}}
+      li: a.js-set-card-color {{_ 'setCardColorPopup-title'}}
     hr
     ul.pop-over-list
       li: a.js-move-card-to-top {{_ 'moveCardToTop-title'}}
@@ -309,33 +306,41 @@ template(name="cardMorePopup")
     h2 {{_ 'change-card-parent'}}
     label {{_ 'source-board'}}:
       select.js-field-parent-board
+        if isTopLevel
+          option(value="none" selected) {{_ 'custom-field-dropdown-none'}}
+        else
+          option(value="none") {{_ 'custom-field-dropdown-none'}}
         each boards
           if isParentBoard
             option(value="{{_id}}" selected) {{title}}
           else
             option(value="{{_id}}") {{title}}
-        if isTopLevel
-          option(value="none" selected) {{_ 'custom-field-dropdown-none'}}
-        else
-          option(value="none") {{_ 'custom-field-dropdown-none'}}
 
     label {{_ 'parent-card'}}:
       select.js-field-parent-card
         if isTopLevel
           option(value="none" selected) {{_ 'custom-field-dropdown-none'}}
         else
+          option(value="none") {{_ 'custom-field-dropdown-none'}}
           each cards
             if isParentCard
               option(value="{{_id}}" selected) {{title}}
             else
               option(value="{{_id}}") {{title}}
-          option(value="none") {{_ 'custom-field-dropdown-none'}}
     br
     | {{_ 'added'}}
     span.date(title=card.createdAt) {{ moment createdAt 'LLL' }}
     a.js-delete(title="{{_ 'card-delete-notice'}}") {{_ 'delete'}}
 
-
+template(name="setCardColorPopup")
+  form.edit-label
+    .palette-colors: each colors
+      unless $eq color 'white'
+        span.card-label.palette-color.js-palette-color(class="card-details-{{color}}")
+          if(isSelected color)
+            i.fa.fa-check
+    button.primary.confirm.js-submit {{_ 'save'}}
+    button.js-remove-color.negate.wide.right {{_ 'unset-color'}}
 
 template(name="cardDeletePopup")
   p {{_ "card-delete-pop"}}

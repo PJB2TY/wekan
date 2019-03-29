@@ -1,3 +1,17 @@
+REM ------------------------------------------------------------
+
+REM NOTE: THIS .BAT DOES NOT WORK !!
+REM Use instead this webpage instructions to build on Windows:
+REM https://github.com/wekan/wekan/wiki/Install-Wekan-from-source-on-Windows
+REM Please add fix PRs, like config of MongoDB etc.
+
+REM ------------------------------------------------------------
+
+REM # Debug OIDC OAuth2 etc.
+REM SET DEBUG=true
+
+REM ------------------------------------------------------------
+
 SET MONGO_URL=mongodb://127.0.0.1:27017/wekan
 SET ROOT_URL=http://127.0.0.1:2000/
 SET MAIL_URL=smtp://user:pass@mailserver.example.com:25/
@@ -6,6 +20,16 @@ SET PORT=2000
 
 REM # If you disable Wekan API with false, Export Board does not work.
 SET WITH_API=true
+
+REM # ==== PASSWORD BRUTE FORCE PROTECTION ====
+REM #https://atmospherejs.com/lucasantoniassi/accounts-lockout
+REM #Defaults below. Uncomment to change. wekan/server/accounts-lockout.js
+REM SET ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURES_BEFORE=3
+REM SET ACCOUNTS_LOCKOUT_KNOWN_USERS_PERIOD=60
+REM SET ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURE_WINDOW=15
+REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
+REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
+REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
 
 REM # Optional: Integration with Matomo https://matomo.org that is installed to your server
 REM # The address of the server where Matomo is hosted.
@@ -209,6 +233,22 @@ REM # LDAP_MERGE_EXISTING_USERS :
 REM # example : LDAP_MERGE_EXISTING_USERS=true
 REM SET LDAP_MERGE_EXISTING_USERS=false
 
+REM # LDAP_EMAIL_MATCH_ENABLE : allow existing account matching by e-mail address when username does not match
+REM # example: LDAP_EMAIL_MATCH_ENABLE=true
+REM SET LDAP_EMAIL_MATCH_ENABLE=false
+
+REM # LDAP_EMAIL_MATCH_REQUIRE : require existing account matching by e-mail address when username does match
+REM # example: LDAP_EMAIL_MATCH_REQUIRE=true
+REM SET LDAP_EMAIL_MATCH_REQUIRE=false
+
+REM # LDAP_EMAIL_MATCH_VERIFIED : require existing account email address to be verified for matching
+REM # example: LDAP_EMAIL_MATCH_VERIFIED=true
+REM SET LDAP_EMAIL_MATCH_VERIFIED=false
+
+REM # LDAP_EMAIL_FIELD : which field contains the LDAP e-mail address
+REM # example: LDAP_EMAIL_FIELD=mail
+REM SET LDAP_EMAIL_FIELD=
+
 REM # LDAP_SYNC_USER_DATA :
 REM # example : LDAP_SYNC_USER_DATA=true
 REM SET LDAP_SYNC_USER_DATA=false
@@ -224,6 +264,19 @@ REM # SET LDAP_SYNC_GROUP_ROLES=
 REM # LDAP_DEFAULT_DOMAIN : The default domain of the ldap it is used to create email if the field is not map correctly with the LDAP_SYNC_USER_DATA_FIELDMAP
 REM # example :
 REM SET LDAP_DEFAULT_DOMAIN=
+
+REM # Enable/Disable syncing of admin status based on ldap groups:
+REM SET LDAP_SYNC_ADMIN_STATUS=true
+
+REM # Comma separated list of admin group names to sync.
+REM SET LDAP_SYNC_ADMIN_GROUPS=group1,group2
+
+REM # Login to LDAP automatically with HTTP header.
+REM # In below example for siteminder, at right side of = is header name.
+REM SET HEADER_LOGIN_ID=BNPPUID
+REM SET HEADER_LOGIN_FIRSTNAME=BNPPFIRSTNAME
+REM SET HEADER_LOGIN_LASTNAME=BNPPLASTNAME
+REM SET HEADER_LOGIN_EMAIL=BNPPEMAILADDRESS
 
 REM ------------------------------------------------
 

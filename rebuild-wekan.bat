@@ -1,6 +1,7 @@
 @ECHO OFF
 
-REM IN PROGRESS: Build on Windows.
+REM NOTE: THIS .BAT DOES NOT WORK !!
+REM Use instead this webpage instructions to build on Windows:
 REM https://github.com/wekan/wekan/wiki/Install-Wekan-from-source-on-Windows
 REM Please add fix PRs, like config of MongoDB etc.
 
@@ -34,6 +35,10 @@ git clone --depth 1 -b master https://github.com/meteor-useraccounts/core.git me
 git clone --depth 1 -b master https://github.com/wekan/meteor-accounts-cas.git
 git clone --depth 1 -b master https://github.com/wekan/wekan-ldap.git
 git clone --depth 1 -b master https://github.com/wekan/wekan-scrollbar.git
+git clone --depth 1 -b master https://github.com/wekan/meteor-accounts-oidc.git
+move meteor-accounts-oidc/packages/switch_accounts-oidc wekan_accounts-oidc
+move meteor-accounts-oidc/packages/switch_oidc wekan_oidc
+del /S /F /Q meteor-accounts-oidc
 REM sed -i 's/api\.versionsFrom/\/\/api.versionsFrom/' ~/repos/wekan/packages/meteor-useraccounts-core/package.js
 cd ..
 REM del /S /F /Q node_modules

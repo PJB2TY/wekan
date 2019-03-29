@@ -1,10 +1,19 @@
 Boards = new Mongo.Collection('boards');
 
+/**
+ * This is a Board.
+ */
 Boards.attachSchema(new SimpleSchema({
   title: {
+    /**
+     * The title of the board
+     */
     type: String,
   },
   slug: {
+    /**
+     * The title slugified.
+     */
     type: String,
     autoValue() { // eslint-disable-line consistent-return
       // XXX We need to improve slug management. Only the id should be necessary
@@ -24,6 +33,9 @@ Boards.attachSchema(new SimpleSchema({
     },
   },
   archived: {
+    /**
+     * Is the board archived?
+     */
     type: Boolean,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -32,6 +44,9 @@ Boards.attachSchema(new SimpleSchema({
     },
   },
   createdAt: {
+    /**
+     * Creation time of the board
+     */
     type: Date,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert) {
@@ -43,6 +58,9 @@ Boards.attachSchema(new SimpleSchema({
   },
   // XXX Inconsistent field naming
   modifiedAt: {
+    /**
+     * Last modification time of the board
+     */
     type: Date,
     optional: true,
     autoValue() { // eslint-disable-line consistent-return
@@ -55,6 +73,9 @@ Boards.attachSchema(new SimpleSchema({
   },
   // De-normalized number of users that have starred this board
   stars: {
+    /**
+     * How many stars the board has
+     */
     type: Number,
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert) {
@@ -64,6 +85,9 @@ Boards.attachSchema(new SimpleSchema({
   },
   // De-normalized label system
   'labels': {
+    /**
+     * List of labels attached to a board
+     */
     type: [Object],
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -78,6 +102,9 @@ Boards.attachSchema(new SimpleSchema({
     },
   },
   'labels.$._id': {
+    /**
+     * Unique id of a label
+     */
     // We don't specify that this field must be unique in the board because that
     // will cause performance penalties and is not necessary since this field is
     // always set on the server.
@@ -86,10 +113,22 @@ Boards.attachSchema(new SimpleSchema({
     type: String,
   },
   'labels.$.name': {
+    /**
+     * Name of a label
+     */
     type: String,
     optional: true,
   },
   'labels.$.color': {
+    /**
+     * color of a label.
+     *
+     * Can be amongst `green`, `yellow`, `orange`, `red`, `purple`,
+     * `blue`, `sky`, `lime`, `pink`, `black`,
+     * `silver`, `peachpuff`, `crimson`, `plum`, `darkgreen`,
+     * `slateblue`, `magenta`, `gold`, `navy`, `gray`,
+     * `saddlebrown`, `paleturquoise`, `mistyrose`, `indigo`
+     */
     type: String,
     allowedValues: [
       'green', 'yellow', 'orange', 'red', 'purple',
@@ -103,6 +142,9 @@ Boards.attachSchema(new SimpleSchema({
   // documents like de-normalized meta-data (the date the member joined the
   // board, the number of contributions, etc.).
   'members': {
+    /**
+     * List of members of a board
+     */
     type: [Object],
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -117,27 +159,48 @@ Boards.attachSchema(new SimpleSchema({
     },
   },
   'members.$.userId': {
+    /**
+     * The uniq ID of the member
+     */
     type: String,
   },
   'members.$.isAdmin': {
+    /**
+     * Is the member an admin of the board?
+     */
     type: Boolean,
   },
   'members.$.isActive': {
+    /**
+     * Is the member active?
+     */
     type: Boolean,
   },
   'members.$.isNoComments': {
+    /**
+     * Is the member not allowed to make comments
+     */
     type: Boolean,
     optional: true,
   },
   'members.$.isCommentOnly': {
+    /**
+     * Is the member only allowed to comment on the board
+     */
     type: Boolean,
     optional: true,
   },
   permission: {
+    /**
+     * visibility of the board
+     */
     type: String,
     allowedValues: ['public', 'private'],
   },
   color: {
+    /**
+     * The color of the board.
+     */
     type: String,
     allowedValues: [
       'belize',
@@ -154,24 +217,45 @@ Boards.attachSchema(new SimpleSchema({
     },
   },
   description: {
+    /**
+     * The description of the board
+     */
     type: String,
     optional: true,
   },
   subtasksDefaultBoardId: {
+    /**
+     * The default board ID assigned to subtasks.
+     */
     type: String,
     optional: true,
     defaultValue: null,
   },
   subtasksDefaultListId: {
+    /**
+     * The default List ID assigned to subtasks.
+     */
     type: String,
     optional: true,
     defaultValue: null,
   },
   allowsSubtasks: {
+    /**
+     * Does the board allows subtasks?
+     */
     type: Boolean,
     defaultValue: true,
   },
   presentParentTask: {
+    /**
+     * Controls how to present the parent task:
+     *
+     * - `prefix-with-full-path`: add a prefix with the full path
+     * - `prefix-with-parent`: add a prefisx with the parent name
+     * - `subtext-with-full-path`: add a subtext with the full path
+     * - `subtext-with-parent`: add a subtext with the parent name
+     * - `no-parent`: does not show the parent at all
+     */
     type: String,
     allowedValues: [
       'prefix-with-full-path',
@@ -184,31 +268,67 @@ Boards.attachSchema(new SimpleSchema({
     defaultValue: 'no-parent',
   },
   startAt: {
+    /**
+     * Starting date of the board.
+     */
     type: Date,
     optional: true,
   },
   dueAt: {
+    /**
+     * Due date of the board.
+     */
     type: Date,
     optional: true,
   },
   endAt: {
+    /**
+     * End date of the board.
+     */
     type: Date,
     optional: true,
   },
   spentTime: {
+    /**
+     * Time spent in the board.
+     */
     type: Number,
     decimal: true,
     optional: true,
   },
   isOvertime: {
+    /**
+     * Is the board overtimed?
+     */
     type: Boolean,
     defaultValue: false,
     optional: true,
+  },
+  type: {
+    /**
+     * The type of board
+     */
+    type: String,
+    defaultValue: 'board',
   },
 }));
 
 
 Boards.helpers({
+  copy() {
+    const oldId = this._id;
+    delete this._id;
+    const _id = Boards.insert(this);
+
+    // Copy all swimlanes in board
+    Swimlanes.find({
+      boardId: oldId,
+      archived: false,
+    }).forEach((swimlane) => {
+      swimlane.type = 'swimlane';
+      swimlane.copy(_id);
+    });
+  },
   /**
    * Is supplied user authorized to view this board?
    */
@@ -248,8 +368,35 @@ Boards.helpers({
     return Lists.find({ boardId: this._id, archived: false }, { sort: { sort: 1 } });
   },
 
+  nullSortLists() {
+    return Lists.find({
+      boardId: this._id,
+      archived: false,
+      sort: { $eq: null },
+    });
+  },
+
   swimlanes() {
     return Swimlanes.find({ boardId: this._id, archived: false }, { sort: { sort: 1 } });
+  },
+
+  nextSwimlane(swimlane) {
+    return Swimlanes.findOne({
+      boardId: this._id,
+      archived: false,
+      sort: { $gte: swimlane.sort },
+      _id: { $ne: swimlane._id },
+    }, {
+      sort: { sort: 1 },
+    });
+  },
+
+  nullSortSwimlanes() {
+    return Swimlanes.find({
+      boardId: this._id,
+      archived: false,
+      sort: { $eq: null },
+    });
   },
 
   hasOvertimeCards(){
@@ -276,10 +423,6 @@ Boards.helpers({
 
   memberUsers() {
     return Users.find({ _id: { $in: _.pluck(this.members, 'userId') } });
-  },
-
-  getMember(id) {
-    return _.findWhere(this.members, { userId: id });
   },
 
   getLabel(name, color) {
@@ -323,7 +466,7 @@ Boards.helpers({
   },
 
   customFields() {
-    return CustomFields.find({ boardId: this._id }, { sort: { name: 1 } });
+    return CustomFields.find({ boardIds: {$in: [this._id]} }, { sort: { name: 1 } });
   },
 
   // XXX currently mutations return no value so we have an issue when using addLabel in import
@@ -334,12 +477,87 @@ Boards.helpers({
     return _id;
   },
 
+  searchBoards(term) {
+    check(term, Match.OneOf(String, null, undefined));
+
+    const query = { boardId: this._id };
+    query.type = 'cardType-linkedBoard';
+    query.archived = false;
+
+    const projection = { limit: 10, sort: { createdAt: -1 } };
+
+    if (term) {
+      const regex = new RegExp(term, 'i');
+
+      query.$or = [
+        { title: regex },
+        { description: regex },
+      ];
+    }
+
+    return Cards.find(query, projection);
+  },
+
+  searchSwimlanes(term) {
+    check(term, Match.OneOf(String, null, undefined));
+
+    const query = { boardId: this._id };
+    if (this.isTemplatesBoard()) {
+      query.type = 'template-swimlane';
+      query.archived = false;
+    } else {
+      query.type = {$nin: ['template-swimlane']};
+    }
+    const projection = { limit: 10, sort: { createdAt: -1 } };
+
+    if (term) {
+      const regex = new RegExp(term, 'i');
+
+      query.$or = [
+        { title: regex },
+        { description: regex },
+      ];
+    }
+
+    return Swimlanes.find(query, projection);
+  },
+
+  searchLists(term) {
+    check(term, Match.OneOf(String, null, undefined));
+
+    const query = { boardId: this._id };
+    if (this.isTemplatesBoard()) {
+      query.type = 'template-list';
+      query.archived = false;
+    } else {
+      query.type = {$nin: ['template-list']};
+    }
+    const projection = { limit: 10, sort: { createdAt: -1 } };
+
+    if (term) {
+      const regex = new RegExp(term, 'i');
+
+      query.$or = [
+        { title: regex },
+        { description: regex },
+      ];
+    }
+
+    return Lists.find(query, projection);
+  },
+
   searchCards(term, excludeLinked) {
     check(term, Match.OneOf(String, null, undefined));
 
     const query = { boardId: this._id };
     if (excludeLinked) {
       query.linkedId = null;
+    }
+    if (this.isTemplatesBoard()) {
+      query.type = 'template-card';
+      query.archived = false;
+    } else {
+      query.type = {$nin: ['template-card']};
     }
     const projection = { limit: 10, sort: { createdAt: -1 } };
 
@@ -387,9 +605,7 @@ Boards.helpers({
         title: TAPi18n.__('queue'),
         boardId: this._id,
       });
-      Boards.update(this._id, {$set: {
-        subtasksDefaultListId: this.subtasksDefaultListId,
-      }});
+      this.setSubtasksDefaultListId(this.subtasksDefaultListId);
     }
     return this.subtasksDefaultListId;
   },
@@ -437,6 +653,13 @@ Boards.helpers({
     });
   },
 
+  isTemplateBoard() {
+    return this.type === 'template-board';
+  },
+
+  isTemplatesBoard() {
+    return this.type === 'template-container';
+  },
 });
 
 
@@ -778,6 +1001,14 @@ if (Meteor.isServer) {
 
 //BOARDS REST API
 if (Meteor.isServer) {
+  /**
+   * @operation get_boards_from_user
+   * @summary Get all boards attached to a user
+   *
+   * @param {string} userId the ID of the user to retrieve the data
+   * @return_type [{_id: string,
+                    title: string}]
+                    */
   JsonRoutes.add('GET', '/api/users/:userId/boards', function (req, res) {
     try {
       Authentication.checkLoggedIn(req.userId);
@@ -808,6 +1039,13 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation get_public_boards
+   * @summary Get all public boards
+   *
+   * @return_type [{_id: string,
+                    title: string}]
+                    */
   JsonRoutes.add('GET', '/api/boards', function (req, res) {
     try {
       Authentication.checkUserId(req.userId);
@@ -829,6 +1067,13 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation get_board
+   * @summary Get the board with that particular ID
+   *
+   * @param {string} boardId the ID of the board to retrieve the data
+   * @return_type Boards
+   */
   JsonRoutes.add('GET', '/api/boards/:boardId', function (req, res) {
     try {
       const id = req.params.boardId;
@@ -847,34 +1092,31 @@ if (Meteor.isServer) {
     }
   });
 
-  JsonRoutes.add('PUT', '/api/boards/:boardId/members', function (req, res) {
-    Authentication.checkUserId(req.userId);
-    try {
-      const boardId = req.params.boardId;
-      const board = Boards.findOne({ _id: boardId });
-      const userId = req.body.userId;
-      const user = Users.findOne({ _id: userId });
-
-      if (!board.getMember(userId)) {
-        user.addInvite(boardId);
-        board.addMember(userId);
-        JsonRoutes.sendResult(res, {
-          code: 200,
-          data: id,
-        });
-      } else {
-        JsonRoutes.sendResult(res, {
-          code: 200,
-        });
-      }
-    }
-    catch (error) {
-      JsonRoutes.sendResult(res, {
-        data: error,
-      });
-    }
-  });
-
+  /**
+   * @operation new_board
+   * @summary Create a board
+   *
+   * @description This allows to create a board.
+   *
+   * The color has to be chosen between `belize`, `nephritis`, `pomegranate`,
+   * `pumpkin`, `wisteria`, `midnight`:
+   *
+   * <img src="https://wekan.github.io/board-colors.png" width="40%" alt="Wekan logo" />
+   *
+   * @param {string} title the new title of the board
+   * @param {string} owner "ABCDE12345" <= User ID in Wekan.
+   *                 (Not username or email)
+   * @param {boolean} [isAdmin] is the owner an admin of the board (default true)
+   * @param {boolean} [isActive] is the board active (default true)
+   * @param {boolean} [isNoComments] disable comments (default false)
+   * @param {boolean} [isCommentOnly] only enable comments (default false)
+   * @param {string} [permission] "private" board <== Set to "public" if you
+   *                 want public Wekan board
+   * @param {string} [color] the color of the board
+   *
+   * @return_type {_id: string,
+                   defaultSwimlaneId: string}
+                   */
   JsonRoutes.add('POST', '/api/boards', function (req, res) {
     try {
       Authentication.checkUserId(req.userId);
@@ -912,6 +1154,12 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation delete_board
+   * @summary Delete a board
+   *
+   * @param {string} boardId the ID of the board
+   */
   JsonRoutes.add('DELETE', '/api/boards/:boardId', function (req, res) {
     try {
       Authentication.checkUserId(req.userId);
@@ -932,6 +1180,19 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation add_board_label
+   * @summary Add a label to a board
+   *
+   * @description If the board doesn't have the name/color label, this function
+   * adds the label to the board.
+   *
+   * @param {string} boardId the board
+   * @param {string} color the color of the new label
+   * @param {string} name the name of the new label
+   *
+   * @return_type string
+   */
   JsonRoutes.add('PUT', '/api/boards/:boardId/labels', function (req, res) {
     Authentication.checkUserId(req.userId);
     const id = req.params.boardId;
@@ -961,6 +1222,17 @@ if (Meteor.isServer) {
     }
   });
 
+  /**
+   * @operation set_board_member_permission
+   * @tag Users
+   * @summary Change the permission of a member of a board
+   *
+   * @param {string} boardId the ID of the board that we are changing
+   * @param {string} memberId the ID of the user to change permissions
+   * @param {boolean} isAdmin admin capability
+   * @param {boolean} isNoComments NoComments capability
+   * @param {boolean} isCommentOnly CommentsOnly capability
+   */
   JsonRoutes.add('POST', '/api/boards/:boardId/members/:memberId', function (req, res) {
     try {
       const boardId = req.params.boardId;
@@ -969,9 +1241,14 @@ if (Meteor.isServer) {
       Authentication.checkBoardAccess(req.userId, boardId);
       const board = Boards.findOne({ _id: boardId });
       function isTrue(data){
-        return data.toLowerCase() === 'true';
+        try {
+          return data.toLowerCase() === 'true';
+        }
+        catch (error) {
+          return data;
+        }
       }
-      board.setMemberPermission(memberId, isTrue(isAdmin), isTrue(isNoComments), isTrue(isCommentOnly), req.userId);
+      const query = board.setMemberPermission(memberId, isTrue(isAdmin), isTrue(isNoComments), isTrue(isCommentOnly), req.userId);
 
       JsonRoutes.sendResult(res, {
         code: 200,

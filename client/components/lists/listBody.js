@@ -1,6 +1,12 @@
 const subManager = new SubsManager();
+const InfiniteScrollIter = 10;
 
 BlazeComponent.extendComponent({
+  onCreated() {
+    // for infinite scrolling
+    this.cardlimit = new ReactiveVar(InfiniteScrollIter);
+  },
+
   mixins() {
     return [Mixins.PerfectScrollbar];
   },
@@ -39,27 +45,56 @@ BlazeComponent.extendComponent({
     const labelIds = formComponent.labels.get();
     const customFields = formComponent.customFields.get();
 
-    const boardId = this.data().board();
+    const board = this.data().board();
+    let linkedId = '';
     let swimlaneId = '';
     const boardView = Meteor.user().profile.boardView;
-    if (boardView === 'board-view-swimlanes')
-      swimlaneId = this.parentComponent().parentComponent().data()._id;
-    else if ((boardView === 'board-view-lists') || (boardView === 'board-view-cal'))
-      swimlaneId = boardId.getDefaultSwimline()._id;
-
+    let cardType = 'cardType-card';
     if (title) {
+      if (board.isTemplatesBoard()) {
+        swimlaneId = this.parentComponent().parentComponent().data()._id; // Always swimlanes view
+        const swimlane = Swimlanes.findOne(swimlaneId);
+        // If this is the card templates swimlane, insert a card template
+        if (swimlane.isCardTemplatesSwimlane())
+          cardType = 'template-card';
+        // If this is the board templates swimlane, insert a board template and a linked card
+        else if (swimlane.isBoardTemplatesSwimlane()) {
+          linkedId = Boards.insert({
+            title,
+            permission: 'private',
+            type: 'template-board',
+          });
+          Swimlanes.insert({
+            title: TAPi18n.__('default'),
+            boardId: linkedId,
+          });
+          cardType = 'cardType-linkedBoard';
+        }
+      } else if (boardView === 'board-view-swimlanes')
+        swimlaneId = this.parentComponent().parentComponent().data()._id;
+      else if ((boardView === 'board-view-lists') || (boardView === 'board-view-cal'))
+        swimlaneId = board.getDefaultSwimline()._id;
+
       const _id = Cards.insert({
         title,
         members,
         labelIds,
         customFields,
         listId: this.data()._id,
-        boardId: boardId._id,
+        boardId: board._id,
         sort: sortIndex,
         swimlaneId,
-        type: 'cardType-card',
+        type: cardType,
+        linkedId,
       });
 
+      // if the displayed card count is less than the total cards in the list,
+      // we need to increment the displayed card count to prevent the spinner
+      // to appear
+      const cardCount = this.data().cards(this.idOrNull(swimlaneId)).count();
+      if (this.cardlimit.get() < cardCount) {
+        this.cardlimit.set(this.cardlimit.get() + InfiniteScrollIter);
+      }
 
       // In case the filter is active we need to add the newly inserted card in
       // the list of exceptions -- cards that are not filtered. Otherwise the
@@ -92,9 +127,9 @@ BlazeComponent.extendComponent({
       const methodName = evt.shiftKey ? 'toggleRange' : 'toggle';
       MultiSelection[methodName](this.currentData()._id);
 
-    // If the card is already selected, we want to de-select it.
-    // XXX We should probably modify the minicard href attribute instead of
-    // overwriting the event in case the card is already selected.
+      // If the card is already selected, we want to de-select it.
+      // XXX We should probably modify the minicard href attribute instead of
+      // overwriting the event in case the card is already selected.
     } else if (Session.equals('currentCard', this.currentData()._id)) {
       evt.stopImmediatePropagation();
       evt.preventDefault();
@@ -114,9 +149,29 @@ BlazeComponent.extendComponent({
 
   idOrNull(swimlaneId) {
     const currentUser = Meteor.user();
-    if (currentUser.profile.boardView === 'board-view-swimlanes')
+    if (currentUser.profile.boardView === 'board-view-swimlanes' ||
+        this.data().board().isTemplatesBoard())
       return swimlaneId;
     return undefined;
+  },
+
+  cardsWithLimit(swimlaneId) {
+    const limit = this.cardlimit.get();
+    const selector = {
+      listId: this.currentData()._id,
+      archived: false,
+    };
+    if (swimlaneId)
+      selector.swimlaneId = swimlaneId;
+    return Cards.find(Filter.mongoSelector(selector), {
+      sort: ['sort'],
+      limit,
+    });
+  },
+
+  showSpinner(swimlaneId) {
+    const list = Template.currentData();
+    return list.cards(swimlaneId).count() > this.cardlimit.get();
   },
 
   canSeeAddCard() {
@@ -179,7 +234,7 @@ BlazeComponent.extendComponent({
 
   pressKey(evt) {
     // Pressing Enter should submit the card
-    if (evt.keyCode === 13) {
+    if (evt.keyCode === 13 && !evt.shiftKey) {
       evt.preventDefault();
       const $form = $(evt.currentTarget).closest('form');
       // XXX For some reason $form.submit() does not work (it's probably a bug
@@ -188,8 +243,8 @@ BlazeComponent.extendComponent({
       // work.
       $form.find('button[type=submit]').click();
 
-    // Pressing Tab should open the form of the next column, and Maj+Tab go
-    // in the reverse order
+      // Pressing Tab should open the form of the next column, and Maj+Tab go
+      // in the reverse order
     } else if (evt.keyCode === 9) {
       evt.preventDefault();
       const isReverse = evt.shiftKey;
@@ -211,7 +266,8 @@ BlazeComponent.extendComponent({
     return [{
       keydown: this.pressKey,
       'click .js-link': Popup.open('linkCard'),
-      'click .js-search': Popup.open('searchCard'),
+      'click .js-search': Popup.open('searchElement'),
+      'click .js-card-template': Popup.open('searchElement'),
     }];
   },
 
@@ -249,7 +305,7 @@ BlazeComponent.extendComponent({
           const currentBoard = Boards.findOne(Session.get('currentBoard'));
           callback($.map(currentBoard.labels, (label) => {
             if (label.name.indexOf(term) > -1 ||
-                label.color.indexOf(term) > -1) {
+              label.color.indexOf(term) > -1) {
               return label;
             }
             return null;
@@ -286,17 +342,7 @@ BlazeComponent.extendComponent({
 
 BlazeComponent.extendComponent({
   onCreated() {
-    // Prefetch first non-current board id
-    const boardId = Boards.findOne({
-      archived: false,
-      'members.userId': Meteor.userId(),
-      _id: {$ne: Session.get('currentBoard')},
-    }, {
-      sort: ['title'],
-    })._id;
-    // Subscribe to this board
-    subManager.subscribe('board', boardId);
-    this.selectedBoardId = new ReactiveVar(boardId);
+    this.selectedBoardId = new ReactiveVar('');
     this.selectedSwimlaneId = new ReactiveVar('');
     this.selectedListId = new ReactiveVar('');
 
@@ -322,6 +368,7 @@ BlazeComponent.extendComponent({
       archived: false,
       'members.userId': Meteor.userId(),
       _id: {$ne: Session.get('currentBoard')},
+      type: 'board',
     }, {
       sort: ['title'],
     });
@@ -329,7 +376,7 @@ BlazeComponent.extendComponent({
   },
 
   swimlanes() {
-    if (!this.selectedBoardId) {
+    if (!this.selectedBoardId.get()) {
       return [];
     }
     const swimlanes = Swimlanes.find({boardId: this.selectedBoardId.get()});
@@ -339,7 +386,7 @@ BlazeComponent.extendComponent({
   },
 
   lists() {
-    if (!this.selectedBoardId) {
+    if (!this.selectedBoardId.get()) {
       return [];
     }
     const lists = Lists.find({boardId: this.selectedBoardId.get()});
@@ -360,6 +407,7 @@ BlazeComponent.extendComponent({
       archived: false,
       linkedId: {$nin: ownCardsIds},
       _id: {$nin: ownCardsIds},
+      type: {$nin: ['template-card']},
     });
   },
 
@@ -427,12 +475,25 @@ BlazeComponent.extendComponent({
   },
 
   onCreated() {
-    // Prefetch first non-current board id
-    let board = Boards.findOne({
-      archived: false,
-      'members.userId': Meteor.userId(),
-      _id: {$ne: Session.get('currentBoard')},
-    });
+    this.isCardTemplateSearch = $(Popup._getTopStack().openerElement).hasClass('js-card-template');
+    this.isListTemplateSearch = $(Popup._getTopStack().openerElement).hasClass('js-list-template');
+    this.isSwimlaneTemplateSearch = $(Popup._getTopStack().openerElement).hasClass('js-open-add-swimlane-menu');
+    this.isBoardTemplateSearch = $(Popup._getTopStack().openerElement).hasClass('js-add-board');
+    this.isTemplateSearch = this.isCardTemplateSearch ||
+      this.isListTemplateSearch ||
+      this.isSwimlaneTemplateSearch ||
+      this.isBoardTemplateSearch;
+    let board = {};
+    if (this.isTemplateSearch) {
+      board = Boards.findOne(Meteor.user().profile.templatesBoardId);
+    } else {
+      // Prefetch first non-current board id
+      board = Boards.findOne({
+        archived: false,
+        'members.userId': Meteor.userId(),
+        _id: {$nin: [Session.get('currentBoard'), Meteor.user().profile.templatesBoardId]},
+      });
+    }
     if (!board) {
       Popup.close();
       return;
@@ -442,20 +503,21 @@ BlazeComponent.extendComponent({
     subManager.subscribe('board', boardId);
     this.selectedBoardId = new ReactiveVar(boardId);
 
-    this.boardId = Session.get('currentBoard');
-    // In order to get current board info
-    subManager.subscribe('board', this.boardId);
-    board = Boards.findOne(this.boardId);
-    // List where to insert card
-    const list = $(Popup._getTopStack().openerElement).closest('.js-list');
-    this.listId = Blaze.getData(list[0])._id;
-    // Swimlane where to insert card
-    const swimlane = $(Popup._getTopStack().openerElement).closest('.js-swimlane');
-    this.swimlaneId = '';
-    if (board.view === 'board-view-swimlanes')
-      this.swimlaneId = Blaze.getData(swimlane[0])._id;
-    else
-      this.swimlaneId = Swimlanes.findOne({boardId: this.boardId})._id;
+    if (!this.isBoardTemplateSearch) {
+      this.boardId = Session.get('currentBoard');
+      // In order to get current board info
+      subManager.subscribe('board', this.boardId);
+      this.swimlaneId = '';
+      // Swimlane where to insert card
+      const swimlane = $(Popup._getTopStack().openerElement).parents('.js-swimlane');
+      if (Meteor.user().profile.boardView === 'board-view-swimlanes')
+        this.swimlaneId = Blaze.getData(swimlane[0])._id;
+      else
+        this.swimlaneId = Swimlanes.findOne({boardId: this.boardId})._id;
+      // List where to insert card
+      const list = $(Popup._getTopStack().openerElement).closest('.js-list');
+      this.listId = Blaze.getData(list[0])._id;
+    }
     this.term = new ReactiveVar('');
   },
 
@@ -464,6 +526,7 @@ BlazeComponent.extendComponent({
       archived: false,
       'members.userId': Meteor.userId(),
       _id: {$ne: Session.get('currentBoard')},
+      type: 'board',
     }, {
       sort: ['title'],
     });
@@ -475,7 +538,21 @@ BlazeComponent.extendComponent({
       return [];
     }
     const board = Boards.findOne(this.selectedBoardId.get());
-    return board.searchCards(this.term.get(), false);
+    if (!this.isTemplateSearch || this.isCardTemplateSearch) {
+      return board.searchCards(this.term.get(), false);
+    } else if (this.isListTemplateSearch) {
+      return board.searchLists(this.term.get());
+    } else if (this.isSwimlaneTemplateSearch) {
+      return board.searchSwimlanes(this.term.get());
+    } else if (this.isBoardTemplateSearch) {
+      const boards = board.searchBoards(this.term.get());
+      boards.forEach((board) => {
+        subManager.subscribe('board', board.linkedId);
+      });
+      return boards;
+    } else {
+      return [];
+    }
   },
 
   events() {
@@ -489,20 +566,89 @@ BlazeComponent.extendComponent({
         this.term.set(evt.target.searchTerm.value);
       },
       'click .js-minicard'(evt) {
-        // LINK CARD
-        const card = Blaze.getData(evt.currentTarget);
-        const _id = Cards.insert({
-          title: card.title, //dummy
-          listId: this.listId,
-          swimlaneId: this.swimlaneId,
-          boardId: this.boardId,
-          sort: Lists.findOne(this.listId).cards().count(),
-          type: 'cardType-linkedCard',
-          linkedId: card.linkedId || card._id,
-        });
-        Filter.addException(_id);
+        // 0. Common
+        const title = $('.js-element-title').val().trim();
+        if (!title)
+          return;
+        const element = Blaze.getData(evt.currentTarget);
+        element.title = title;
+        let _id = '';
+        if (!this.isTemplateSearch || this.isCardTemplateSearch) {
+          // Card insertion
+          // 1. Common
+          element.sort = Lists.findOne(this.listId).cards().count();
+          // 1.A From template
+          if (this.isTemplateSearch) {
+            element.type = 'cardType-card';
+            element.linkedId = '';
+            _id = element.copy(this.boardId, this.swimlaneId, this.listId);
+            // 1.B Linked card
+          } else {
+            delete element._id;
+            element.type = 'cardType-linkedCard';
+            element.linkedId = element.linkedId || element._id;
+            _id = Cards.insert(element);
+          }
+          Filter.addException(_id);
+          // List insertion
+        } else if (this.isListTemplateSearch) {
+          element.sort = Swimlanes.findOne(this.swimlaneId).lists().count();
+          element.type = 'list';
+          _id = element.copy(this.boardId, this.swimlaneId);
+        } else if (this.isSwimlaneTemplateSearch) {
+          element.sort = Boards.findOne(this.boardId).swimlanes().count();
+          element.type = 'swimlalne';
+          _id = element.copy(this.boardId);
+        } else if (this.isBoardTemplateSearch) {
+          board = Boards.findOne(element.linkedId);
+          board.sort = Boards.find({archived: false}).count();
+          board.type = 'board';
+          board.title = element.title;
+          delete board.slug;
+          _id = board.copy();
+        }
         Popup.close();
       },
     }];
   },
-}).register('searchCardPopup');
+}).register('searchElementPopup');
+
+BlazeComponent.extendComponent({
+  onCreated() {
+    this.spinnerShown = false;
+    this.cardlimit = this.parentComponent().cardlimit;
+  },
+
+  onRendered() {
+    const spinner = this.find('.sk-spinner-list');
+
+    if (spinner) {
+      const options = {
+        root: null, // we check if the spinner is on the current viewport
+        rootMargin: '0px',
+        threshold: 0.25,
+      };
+
+      this.observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          this.spinnerShown = entry.isIntersecting;
+          this.updateList();
+        });
+      }, options);
+
+      this.observer.observe(spinner);
+    }
+  },
+
+  onDestroyed() {
+    this.observer.disconnect();
+  },
+
+  updateList() {
+    if (this.spinnerShown) {
+      this.cardlimit.set(this.cardlimit.get() + InfiniteScrollIter);
+      window.requestIdleCallback(() => this.updateList());
+    }
+  },
+
+}).register('spinnerList');

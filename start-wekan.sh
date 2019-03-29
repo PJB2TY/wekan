@@ -20,6 +20,10 @@ function wekan_repo_check(){
 #while true; do
       wekan_repo_check
       cd .build/bundle
+      #---------------------------------------------
+      # Debug OIDC OAuth2 etc.
+      #export DEBUG=true
+      #---------------------------------------------
       export MONGO_URL='mongodb://127.0.0.1:27019/wekan'
       #---------------------------------------------
       # Production: https://example.com/wekan
@@ -39,9 +43,19 @@ function wekan_repo_check(){
       # Wekan Export Board works when WITH_API=true.
       # If you disable Wekan API with false, Export Board does not work.
       export WITH_API='true'
+      #---------------------------------------------------------------
+      # ==== PASSWORD BRUTE FORCE PROTECTION ====
+      #https://atmospherejs.com/lucasantoniassi/accounts-lockout
+      #Defaults below. Uncomment to change. wekan/server/accounts-lockout.js
+      #export ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURES_BEFORE=3
+      #export ACCOUNTS_LOCKOUT_KNOWN_USERS_PERIOD=60
+      #export ACCOUNTS_LOCKOUT_KNOWN_USERS_FAILURE_WINDOW=15
+      #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
+      #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
+      #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
       #---------------------------------------------
       # CORS: Set Access-Control-Allow-Origin header. Example: *
-      #- CORS=*
+      #export CORS=*
       #---------------------------------------------
       ## Optional: Integration with Matomo https://matomo.org that is installed to your server
       ## The address of the server where Matomo is hosted:
@@ -68,25 +82,73 @@ function wekan_repo_check(){
       # Example: export WEBHOOKS_ATTRIBUTES=cardId,listId,oldListId,boardId,comment,user,card,commentId
       export WEBHOOKS_ATTRIBUTES=''
       #---------------------------------------------
+      # ==== OAUTH2 AZURE ====
+      # https://github.com/wekan/wekan/wiki/Azure
+      # 1) Register the application with Azure. Make sure you capture
+      #    the application ID as well as generate a secret key.
+      # 2) Configure the environment variables. This differs slightly
+      #     by installation type, but make sure you have the following:
+      #export OAUTH2_ENABLED=true
       # OAuth2 docs: https://github.com/wekan/wekan/wiki/OAuth2
-      # OAuth2 Client ID, for example from Rocket.Chat. Example: abcde12345
-      # example: export OAUTH2_CLIENT_ID=abcde12345
-      #export OAUTH2_CLIENT_ID=''
-      # OAuth2 Secret, for example from Rocket.Chat: Example: 54321abcde
-      # example: export OAUTH2_SECRET=54321abcde
-      #export OAUTH2_SECRET=''
-      # OAuth2 Server URL, for example Rocket.Chat. Example: https://chat.example.com
-      # example: export OAUTH2_SERVER_URL=https://chat.example.com
-      #export OAUTH2_SERVER_URL=''
-      # OAuth2 Authorization Endpoint. Example: /oauth/authorize
-      # example: export OAUTH2_AUTH_ENDPOINT=/oauth/authorize
-      #export OAUTH2_AUTH_ENDPOINT=''
-      # OAuth2 Userinfo Endpoint. Example: /oauth/userinfo
-      # example: export OAUTH2_USERINFO_ENDPOINT=/oauth/userinfo
-      #export OAUTH2_USERINFO_ENDPOINT=''
-      # OAuth2 Token Endpoint. Example: /oauth/token
-      # example: export OAUTH2_TOKEN_ENDPOINT=/oauth/token
-      #export OAUTH2_TOKEN_ENDPOINT=''
+      # OAuth2 login style: popup or redirect.
+      #export OAUTH2_LOGIN_STYLE=redirect
+      # Application GUID captured during app registration:
+      #export OAUTH2_CLIENT_ID=xxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx
+      # Secret key generated during app registration:
+      #export OAUTH2_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      #export OAUTH2_SERVER_URL=https://login.microsoftonline.com/
+      #export OAUTH2_AUTH_ENDPOINT=/oauth2/v2.0/authorize
+      #export OAUTH2_USERINFO_ENDPOINT=https://graph.microsoft.com/oidc/userinfo
+      #export OAUTH2_TOKEN_ENDPOINT=/oauth2/v2.0/token
+      # The claim name you want to map to the unique ID field:
+      #export OAUTH2_ID_MAP=email
+      # The claim name you want to map to the username field:
+      #export OAUTH2_USERNAME_MAP=email
+      # The claim name you want to map to the full name field:
+      #export OAUTH2_FULLNAME_MAP=name
+      # The claim name you want to map to the email field:
+      #export OAUTH2_EMAIL_MAP=email
+      #-----------------------------------------------------------------
+      # ==== OAUTH2 KEYCLOAK ====
+      # https://github.com/wekan/wekan/wiki/Keycloak  <== MAPPING INFO, REQUIRED
+      #export OAUTH2_ENABLED=true
+      # OAuth2 login style: popup or redirect.
+      #export OAUTH2_LOGIN_STYLE=redirect
+      #export OAUTH2_CLIENT_ID=<Keycloak create Client ID>
+      #export OAUTH2_SERVER_URL=<Keycloak server name>/auth
+      #export OAUTH2_AUTH_ENDPOINT=/realms/<keycloak realm>/protocol/openid-connect/auth
+      #export OAUTH2_USERINFO_ENDPOINT=/realms/<keycloak realm>/protocol/openid-connect/userinfo
+      #export OAUTH2_TOKEN_ENDPOINT=/realms/<keycloak realm>/protocol/openid-connect/token
+      #export OAUTH2_SECRET=<keycloak client secret>
+      #-----------------------------------------------------------------
+      # ==== OAUTH2 DOORKEEPER ====
+      # OAuth2 docs: https://github.com/wekan/wekan/wiki/OAuth2
+      # https://github.com/wekan/wekan/issues/1874
+      # https://github.com/wekan/wekan/wiki/OAuth2
+      # Enable the OAuth2 connection
+      #export OAUTH2_ENABLED=true
+      # OAuth2 login style: popup or redirect.
+      #export OAUTH2_LOGIN_STYLE=redirect
+      # OAuth2 Client ID.
+      #export OAUTH2_CLIENT_ID=abcde12345
+      # OAuth2 Secret.
+      #export OAUTH2_SECRET=54321abcde
+      # OAuth2 Server URL.
+      #export OAUTH2_SERVER_URL=https://chat.example.com
+      # OAuth2 Authorization Endpoint.
+      #export OAUTH2_AUTH_ENDPOINT=/oauth/authorize
+      # OAuth2 Userinfo Endpoint.
+      #export OAUTH2_USERINFO_ENDPOINT=/oauth/userinfo
+      # OAuth2 Token Endpoint.
+      #export OAUTH2_TOKEN_ENDPOINT=/oauth/token
+      # OAuth2 ID Mapping
+      #export OAUTH2_ID_MAP=
+      # OAuth2 Username Mapping
+      #export OAUTH2_USERNAME_MAP=
+      # OAuth2 Fullname Mapping
+      #export OAUTH2_FULLNAME_MAP=
+      # OAuth2 Email Mapping
+      #export OAUTH2_EMAIL_MAP=
       #---------------------------------------------
       # LDAP_ENABLE : Enable or not the connection by the LDAP
       # example :  export LDAP_ENABLE=true
@@ -196,6 +258,18 @@ function wekan_repo_check(){
       # LDAP_MERGE_EXISTING_USERS :
       # example :  export LDAP_MERGE_EXISTING_USERS=true
       #export LDAP_MERGE_EXISTING_USERS=false
+      # LDAP_EMAIL_MATCH_ENABLE : allow existing account matching by e-mail address when username does not match
+      # example: LDAP_EMAIL_MATCH_ENABLE=true
+      #export LDAP_EMAIL_MATCH_ENABLE=false
+      # LDAP_EMAIL_MATCH_REQUIRE : require existing account matching by e-mail address when username does match
+      # example: LDAP_EMAIL_MATCH_REQUIRE=true
+      #export LDAP_EMAIL_MATCH_REQUIRE=false
+      # LDAP_EMAIL_MATCH_VERIFIED : require existing account email address to be verified for matching
+      # example: LDAP_EMAIL_MATCH_VERIFIED=true
+      #export LDAP_EMAIL_MATCH_VERIFIED=false
+      # LDAP_EMAIL_FIELD : which field contains the LDAP e-mail address
+      # example: LDAP_EMAIL_FIELD=mail
+      #export LDAP_EMAIL_FIELD=
       # LDAP_SYNC_USER_DATA :
       # example :  export LDAP_SYNC_USER_DATA=true
       #export LDAP_SYNC_USER_DATA=false
@@ -208,16 +282,28 @@ function wekan_repo_check(){
       # LDAP_DEFAULT_DOMAIN : The default domain of the ldap it is used to create email if the field is not map correctly with the LDAP_SYNC_USER_DATA_FIELDMAP
       # example :
       #export LDAP_DEFAULT_DOMAIN=
+      # Enable/Disable syncing of admin status based on ldap groups:
+      #export LDAP_SYNC_ADMIN_STATUS=true
+      # Comma separated list of admin group names to sync.
+      #export LDAP_SYNC_ADMIN_GROUPS=group1,group2
+      #---------------------------------------------------------------------
+      # Login to LDAP automatically with HTTP header.
+      # In below example for siteminder, at right side of = is header name.
+      #export HEADER_LOGIN_ID=BNPPUID
+      #export HEADER_LOGIN_FIRSTNAME=BNPPFIRSTNAME
+      #export HEADER_LOGIN_LASTNAME=BNPPLASTNAME
+      #export HEADER_LOGIN_EMAIL=BNPPEMAILADDRESS
+      #---------------------------------------------------------------------
       # LOGOUT_WITH_TIMER : Enables or not the option logout with timer
       # example : LOGOUT_WITH_TIMER=true
-      #- LOGOUT_WITH_TIMER=
+      #export LOGOUT_WITH_TIMER=
       # LOGOUT_IN : The number of days
       # example : LOGOUT_IN=1
-      #- LOGOUT_IN=
-      #- LOGOUT_ON_HOURS=
+      #export LOGOUT_IN=
+      #export LOGOUT_ON_HOURS=
       # LOGOUT_ON_MINUTES : The number of minutes
       # example : LOGOUT_ON_MINUTES=55
-      #- LOGOUT_ON_MINUTES=
+      #export LOGOUT_ON_MINUTES=
 
       node main.js
       # & >> ../../wekan.log
