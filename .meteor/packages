@@ -31,8 +31,8 @@ kenton:accounts-sandstorm
 service-configuration@1.0.11
 useraccounts:unstyled
 useraccounts:flow-routing
-wekan:wekan-ldap
-wekan:accounts-cas
+wekan-ldap
+wekan-accounts-cas
 wekan-accounts-oidc
 
 # Utilities
@@ -66,7 +66,6 @@ mquandalle:jquery-textcomplete
 mquandalle:jquery-ui-drag-drop-sort
 mquandalle:mousetrap-bindglobal
 peerlibrary:blaze-components@=0.15.1
-perak:markdown
 templates:tabs
 verron:autosize
 simple:json-routes
@@ -92,3 +91,4 @@ mquandalle:perfect-scrollbar
 mdg:meteor-apm-agent
 meteorhacks:unblock
 lucasantoniassi:accounts-lockout
+wekan-markdown

@@ -238,6 +238,19 @@ Users.allow({
     const user = Users.findOne(userId);
     return user && Meteor.user().isAdmin;
   },
+  remove(userId, doc) {
+    const adminsNumber = Users.find({ isAdmin: true }).count();
+    const { isAdmin } = Users.findOne({ _id: userId }, { fields: { 'isAdmin': 1 } });
+
+    // Prevents remove of the only one administrator
+    if (adminsNumber === 1 && isAdmin && userId === doc._id) {
+      return false;
+    }
+
+    // If it's the user or an admin
+    return userId === doc._id || isAdmin;
+  },
+  fetch: [],
 });
 
 // Search a user in the complete server database by its name or username. This
@@ -288,32 +301,32 @@ Users.helpers({
   },
 
   starredBoards() {
-    const {starredBoards = []} = this.profile;
+    const {starredBoards = []} = this.profile || {};
     return Boards.find({archived: false, _id: {$in: starredBoards}});
   },
 
   hasStarred(boardId) {
-    const {starredBoards = []} = this.profile;
+    const {starredBoards = []} = this.profile || {};
     return _.contains(starredBoards, boardId);
   },
 
   invitedBoards() {
-    const {invitedBoards = []} = this.profile;
+    const {invitedBoards = []} = this.profile || {};
     return Boards.find({archived: false, _id: {$in: invitedBoards}});
   },
 
   isInvitedTo(boardId) {
-    const {invitedBoards = []} = this.profile;
+    const {invitedBoards = []} = this.profile || {};
     return _.contains(invitedBoards, boardId);
   },
 
   hasTag(tag) {
-    const {tags = []} = this.profile;
+    const {tags = []} = this.profile || {};
     return _.contains(tags, tag);
   },
 
   hasNotification(activityId) {
-    const {notifications = []} = this.profile;
+    const {notifications = []} = this.profile || {};
     return _.contains(notifications, activityId);
   },
 
@@ -323,7 +336,7 @@ Users.helpers({
   },
 
   getEmailBuffer() {
-    const {emailBuffer = []} = this.profile;
+    const {emailBuffer = []} = this.profile || {};
     return emailBuffer;
   },
 
@@ -358,11 +371,15 @@ Users.helpers({
   },
 
   getTemplatesBoardId() {
-    return this.profile.templatesBoardId;
+    return (this.profile || {}).templatesBoardId;
   },
 
   getTemplatesBoardSlug() {
-    return Boards.findOne(this.profile.templatesBoardId).slug;
+    return (Boards.findOne((this.profile || {}).templatesBoardId) || {}).slug;
+  },
+
+  remove() {
+    User.remove({ _id: this._id});
   },
 });
 
@@ -491,6 +508,9 @@ Meteor.methods({
     Meteor.user().setShowCardsCountAt(limit);
   },
   setEmail(email, userId) {
+    if (Array.isArray(email)) {
+      email = email.shift();
+    }
     check(email, String);
     const existingUser = Users.findOne({'emails.address': email}, {fields: {_id: 1}});
     if (existingUser) {
@@ -508,6 +528,9 @@ Meteor.methods({
   },
   setUsernameAndEmail(username, email, userId) {
     check(username, String);
+    if (Array.isArray(email)) {
+      email = email.shift();
+    }
     check(email, String);
     check(userId, String);
     Meteor.call('setUsername', username, userId);
@@ -601,7 +624,11 @@ if (Meteor.isServer) {
     }
 
     if (user.services.oidc) {
-      const email = user.services.oidc.email.toLowerCase();
+      let email = user.services.oidc.email;
+      if (Array.isArray(email)) {
+        email = email.shift();
+      }
+      email = email.toLowerCase();
       user.username = user.services.oidc.username;
       user.emails = [{ address: email, verified: true }];
       const initials = user.services.oidc.fullname.match(/\b[a-zA-Z]/g).join('').toUpperCase();
@@ -672,6 +699,23 @@ if (Meteor.isServer) {
       username: 1,
     }, {unique: true});
   });
+
+  // OLD WAY THIS CODE DID WORK: When user is last admin of board,
+  // if admin is removed, board is removed.
+  // NOW THIS IS COMMENTED OUT, because other board users still need to be able
+  // to use that board, and not have board deleted.
+  // Someone can be later changed to be admin of board, by making change to database.
+  // TODO: Add UI for changing someone as board admin.
+  //Users.before.remove((userId, doc) => {
+  //  Boards
+  //    .find({members: {$elemMatch: {userId: doc._id, isAdmin: true}}})
+  //    .forEach((board) => {
+  //      // If only one admin for the board
+  //      if (board.members.filter((e) => e.isAdmin).length === 1) {
+  //        Boards.remove(board._id);
+  //      }
+  //    });
+  //});
 
   // Each board document contains the de-normalized number of users that have
   // starred it. If the user star or unstar a board, we need to update this

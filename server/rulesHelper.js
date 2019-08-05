@@ -51,7 +51,7 @@ RulesHelper = {
         listId = list._id;
       }
       const minOrder = _.min(list.cardsUnfiltered(card.swimlaneId).map((c) => c.sort));
-      card.move(card.swimlaneId, listId, minOrder - 1);
+      card.move(boardId, card.swimlaneId, listId, minOrder - 1);
     }
     if(action.actionType === 'moveCardToBottom'){
       let listId;
@@ -64,7 +64,7 @@ RulesHelper = {
         listId = list._id;
       }
       const maxOrder = _.max(list.cardsUnfiltered(card.swimlaneId).map((c) => c.sort));
-      card.move(card.swimlaneId, listId, maxOrder + 1);
+      card.move(boardId, card.swimlaneId, listId, maxOrder + 1);
     }
     if(action.actionType === 'sendEmail'){
       const to = action.emailTo;
@@ -81,6 +81,89 @@ RulesHelper = {
         // eslint-disable-next-line no-console
         console.error(e);
         return;
+      }
+    }
+
+    if(action.actionType === 'setDate') {
+      try {
+        const currentDateTime = new Date();
+        switch (action.dateField){
+        case 'startAt': {
+          const resStart = card.getStart();
+          if (typeof resStart === 'undefined') {
+            card.setStart(currentDateTime);
+          }
+          break;
+        }
+        case 'endAt': {
+          const resEnd = card.getEnd();
+          if (typeof resEnd === 'undefined') {
+            card.setEnd(currentDateTime);
+          }
+          break;
+        }
+        case 'dueAt': {
+          const resDue = card.getDue();
+          if (typeof resDue === 'undefined') {
+            card.setDue(currentDateTime);
+          }
+          break;
+        }
+        case 'receivedAt': {
+          const resReceived = card.getReceived();
+          if (typeof resReceived === 'undefined') {
+            card.setReceived(currentDateTime);
+          }
+          break;
+        }
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error(e);
+        return;
+      }
+    }
+
+    if(action.actionType === 'updateDate'){
+      const currentDateTimeUpdate = new Date();
+      switch (action.dateField){
+      case 'startAt': {
+        card.setStart(currentDateTimeUpdate);
+        break;
+      }
+      case 'endAt': {
+        card.setEnd(currentDateTimeUpdate);
+        break;
+      }
+      case 'dueAt': {
+        card.setDue(currentDateTimeUpdate);
+        break;
+      }
+      case 'receivedAt': {
+        card.setReceived(currentDateTimeUpdate);
+        break;
+      }
+      }
+    }
+
+    if(action.actionType === 'removeDate'){
+      switch (action.dateField){
+      case 'startAt': {
+        card.unsetStart();
+        break;
+      }
+      case 'endAt': {
+        card.unsetEnd();
+        break;
+      }
+      case 'dueAt': {
+        card.unsetDue();
+        break;
+      }
+      case 'receivedAt': {
+        card.unsetReceived();
+        break;
+      }
       }
     }
     if(action.actionType === 'archive'){
@@ -141,13 +224,15 @@ RulesHelper = {
       Swimlanes.insert({
         title: action.swimlaneName,
         boardId,
+        sort: 0,
       });
     }
     if(action.actionType === 'addChecklistWithItems'){
       const checkListId = Checklists.insert({'title':action.checklistName, 'cardId':card._id, 'sort':0});
       const itemsArray = action.checklistItems.split(',');
+      const checkList = Checklists.findOne({_id:checkListId});
       for(let i = 0; i <itemsArray.length; i++){
-        ChecklistItems.insert({title:itemsArray[i], checklistId:checkListId, cardId:card._id, 'sort':0});
+        ChecklistItems.insert({title:itemsArray[i], checklistId:checkListId, cardId:card._id, 'sort':checkList.itemCount()});
       }
     }
     if(action.actionType === 'createCard'){

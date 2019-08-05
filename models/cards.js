@@ -1338,6 +1338,7 @@ function cardMove(userId, doc, fieldNames, oldListId, oldSwimlaneId, oldBoardId)
       listId: doc.listId,
       boardId: doc.boardId,
       cardId: doc._id,
+      cardTitle:doc.title,
       swimlaneName: Swimlanes.findOne(doc.swimlaneId).title,
       swimlaneId: doc.swimlaneId,
       oldSwimlaneId,
@@ -1355,6 +1356,7 @@ function cardState(userId, doc, fieldNames) {
         boardId: doc.boardId,
         listId: doc.listId,
         cardId: doc._id,
+        swimlaneId: doc.swimlaneId,
       });
     } else {
       Activities.insert({
@@ -1364,6 +1366,7 @@ function cardState(userId, doc, fieldNames) {
         listName: Lists.findOne(doc.listId).title,
         listId: doc.listId,
         cardId: doc._id,
+        swimlaneId: doc.swimlaneId,
       });
     }
   }
@@ -1384,6 +1387,9 @@ function cardMembers(userId, doc, fieldNames, modifier) {
         activityType: 'joinMember',
         boardId: doc.boardId,
         cardId: doc._id,
+        memberId,
+        listId: doc.listId,
+        swimlaneId: doc.swimlaneId,
       });
     }
   }
@@ -1400,6 +1406,9 @@ function cardMembers(userId, doc, fieldNames, modifier) {
         activityType: 'unjoinMember',
         boardId: doc.boardId,
         cardId: doc._id,
+        memberId,
+        listId: doc.listId,
+        swimlaneId: doc.swimlaneId,
       });
     }
   }
@@ -1419,6 +1428,8 @@ function cardLabels(userId, doc, fieldNames, modifier) {
         activityType: 'addedLabel',
         boardId: doc.boardId,
         cardId: doc._id,
+        listId: doc.listId,
+        swimlaneId: doc.swimlaneId,
       };
       Activities.insert(act);
     }
@@ -1435,6 +1446,8 @@ function cardLabels(userId, doc, fieldNames, modifier) {
         activityType: 'removedLabel',
         boardId: doc.boardId,
         cardId: doc._id,
+        listId: doc.listId,
+        swimlaneId: doc.swimlaneId,
       });
     }
   }
@@ -1505,7 +1518,7 @@ function cardCreation(userId, doc) {
 }
 
 function cardRemover(userId, doc) {
-  Activities.remove({
+  ChecklistItems.remove({
     cardId: doc._id,
   });
   Checklists.remove({
@@ -1570,7 +1583,7 @@ if (Meteor.isServer) {
 
   // Remove all activities associated with a card if we remove the card
   // Remove also card_comments / checklists / attachments
-  Cards.after.remove((userId, doc) => {
+  Cards.before.remove((userId, doc) => {
     cardRemover(userId, doc);
   });
 }
@@ -1672,6 +1685,7 @@ if (Meteor.isServer) {
    * @param {string} boardId the board ID of the new card
    * @param {string} listId the list ID of the new card
    * @param {string} authorID the user ID of the person owning the card
+   * @param {string} parentId the parent ID of the new card
    * @param {string} title the title of the new card
    * @param {string} description the description of the new card
    * @param {string} swimlaneId the swimlane ID of the new card
@@ -1682,6 +1696,7 @@ if (Meteor.isServer) {
     Authentication.checkUserId(req.userId);
     const paramBoardId = req.params.boardId;
     const paramListId = req.params.listId;
+    const paramParentId = req.params.parentId;
     const currentCards = Cards.find({
       listId: paramListId,
       archived: false,
@@ -1695,6 +1710,7 @@ if (Meteor.isServer) {
         title: req.body.title,
         boardId: paramBoardId,
         listId: paramListId,
+        parentId: paramParentId,
         description: req.body.description,
         userId: req.body.authorId,
         swimlaneId: req.body.swimlaneId,
@@ -1748,6 +1764,7 @@ if (Meteor.isServer) {
    * @param {string} [listId] the new list ID of the card (move operation)
    * @param {string} [description] the new description of the card
    * @param {string} [authorId] change the owner of the card
+   * @param {string} [parentId] change the parent of the card
    * @param {string} [labelIds] the new list of label IDs attached to the card
    * @param {string} [swimlaneId] the new swimlane ID of the card
    * @param {string} [members] the new list of member IDs attached to the card
@@ -1803,6 +1820,19 @@ if (Meteor.isServer) {
         fieldName: 'listId',
       }, paramListId);
 
+    }
+    if (req.body.hasOwnProperty('parentId')) {
+      const newParentId = req.body.parentId;
+      Cards.direct.update({
+        _id: paramCardId,
+        listId: paramListId,
+        boardId: paramBoardId,
+        archived: false,
+      }, {
+        $set: {
+          parentId: newParentId,
+        },
+      });
     }
     if (req.body.hasOwnProperty('description')) {
       const newDescription = req.body.description;

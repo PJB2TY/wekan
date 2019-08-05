@@ -10,8 +10,8 @@ template(name="sidebar")
           i.fa.fa-keyboard-o
           span {{_ 'keyboard-shortcuts' }}
       .sidebar-content.js-board-sidebar-content.js-perfect-scrollbar
-        a.hide-btn.js-hide-sidebar
-          i.fa.fa-navicon
+        //a.hide-btn.js-hide-sidebar
+        //  i.fa.fa-navicon
         unless isDefaultView
           h2
             a.fa.fa-chevron-left.js-back-home
@@ -61,8 +61,10 @@ template(name="boardChangeColorPopup")
     each backgroundColors
       .board-background-select.js-select-background
         span.background-box(class="board-color-{{this}}")
+          span {{this}}
           if isSelected
             i.fa.fa-check
+
 
 template(name="boardSubtaskSettingsPopup")
   form.board-subtask-settings
@@ -189,7 +191,9 @@ template(name="labelsWidget")
       each currentBoard.labels
           a.card-label(class="card-label-{{color}}"
             class="{{#if currentUser.isNotCommentOnly}}js-label{{/if}}")
-            span.card-label-name= name
+            span.card-label-name
+              +viewer
+                = name
       if currentUser.isBoardAdmin
         a.card-label.add-label.js-add-label
           i.fa.fa-plus

@@ -9,6 +9,7 @@
 [![Code Climate](https://codeclimate.com/github/wekan/wekan/badges/gpa.svg "Code Climate")](https://codeclimate.com/github/wekan/wekan)
 [![Project Dependencies](https://david-dm.org/wekan/wekan.svg "Project Dependencies")](https://david-dm.org/wekan/wekan)
 [![Code analysis at Open Hub](https://img.shields.io/badge/code%20analysis-at%20Open%20Hub-brightgreen.svg "Code analysis at Open Hub")](https://www.openhub.net/p/wekan)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fwekan%2Fwekan.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fwekan%2Fwekan?ref=badge_shield)
 
 ## [Translate Wekan at Transifex](https://transifex.com/wekan/wekan)
 
@@ -60,7 +61,7 @@ that by providing one-click installation on various platforms.
 - 64bit: Linux [Snap](https://github.com/wekan/wekan-snap/wiki/Install) or [Sandstorm](https://sandstorm.io) /
   [Mac](https://github.com/wekan/wekan/wiki/Mac) / [Windows](https://github.com/wekan/wekan/wiki/Install-Wekan-from-source-on-Windows).
   [More Platforms](https://github.com/wekan/wekan/wiki/Platforms). [ARM progress](https://github.com/wekan/wekan/issues/1053#issuecomment-410919264).
-- 1 GB RAM minimum free for Wekan. Production server should have miminum total 4 GB RAM.
+- 1 GB RAM minimum free for Wekan. Production server should have minimum total 4 GB RAM.
   For thousands of users, for example with [Docker](https://github.com/wekan/wekan/blob/devel/docker-compose.yml): 3 frontend servers,
   each having 2 CPU and 2 wekan-app containers. One backend wekan-db server with many CPUs.  
 - Enough disk space and alerts about low disk space. If you run out disk space, MongoDB database gets corrupted.
@@ -133,3 +134,6 @@ with [Meteor](https://www.meteor.com).
 [free_software]: https://en.wikipedia.org/wiki/Free_software
 [vanila_badge]: https://vanila.io/img/join-chat-button2.png
 [wekan_chat]: https://community.vanila.io/wekan
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fwekan%2Fwekan.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fwekan%2Fwekan?ref=badge_large)

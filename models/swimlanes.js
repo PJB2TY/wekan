@@ -168,17 +168,21 @@ Swimlanes.helpers({
 
   isListTemplatesSwimlane() {
     const user = Users.findOne(Meteor.userId());
-    return user.profile.listTemplatesSwimlaneId === this._id;
+    return (user.profile || {}).listTemplatesSwimlaneId === this._id;
   },
 
   isCardTemplatesSwimlane() {
     const user = Users.findOne(Meteor.userId());
-    return user.profile.cardTemplatesSwimlaneId === this._id;
+    return (user.profile || {}).cardTemplatesSwimlaneId === this._id;
   },
 
   isBoardTemplatesSwimlane() {
     const user = Users.findOne(Meteor.userId());
-    return user.profile.boardTemplatesSwimlaneId === this._id;
+    return (user.profile || {}).boardTemplatesSwimlaneId === this._id;
+  },
+
+  remove() {
+    Swimlanes.remove({ _id: this._id});
   },
 });
 
@@ -234,7 +238,21 @@ if (Meteor.isServer) {
     });
   });
 
-  Swimlanes.before.remove((userId, doc) => {
+  Swimlanes.before.remove(function(userId, doc) {
+    const lists = Lists.find({
+      boardId: doc.boardId,
+      swimlaneId: {$in: [doc._id, '']},
+      archived: false,
+    }, { sort: ['sort'] });
+
+    if (lists.count() < 2) {
+      lists.forEach((list) => {
+        list.remove();
+      });
+    } else {
+      Cards.remove({swimlaneId: doc._id});
+    }
+
     Activities.insert({
       userId,
       type: 'swimlane',

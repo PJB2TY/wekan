@@ -31,6 +31,13 @@ REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
 REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
 REM SET ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
 
+REM # CORS: Set Access-Control-Allow-Origin header. Example: *
+REM SET CORS=*
+REM # To enable the Set Access-Control-Allow-Headers header. "Authorization,Content-Type" is required for cross-origin use of the API.
+REM SET CORS_ALLOW_HEADERS=Authorization,Content-Type
+REM # To enable the Set Access-Control-Expose-Headers header.  This is not needed for typical CORS situations. Example: *
+REM SET CORS_EXPOSE_HEADERS=*
+
 REM # Optional: Integration with Matomo https://matomo.org that is installed to your server
 REM # The address of the server where Matomo is hosted.
 REM # example: - MATOMO_ADDRESS=https://example.com/matomo
@@ -90,6 +97,25 @@ REM SET OAUTH2_USERINFO_ENDPOINT=
 REM # OAuth2 Token Endpoint. Example: /oauth/token
 REM # example: OAUTH2_TOKEN_ENDPOINT=/oauth/token
 REM SET OAUTH2_TOKEN_ENDPOINT=
+
+
+REM # OAUTH2 ID Token Whitelist Fields.
+REM SET OAUTH2_ID_TOKEN_WHITELIST_FIELDS=[]
+
+REM # OAUTH2 Request Permissions.
+REM SET OAUTH2_REQUEST_PERMISSIONS='openid profile email'
+
+REM # OAuth2 ID Mapping
+REM SET OAUTH2_ID_MAP=
+
+REM # OAuth2 Username Mapping
+REM SET OAUTH2_USERNAME_MAP=
+
+REM # OAuth2 Fullname Mapping
+REM SET OAUTH2_FULLNAME_MAP=
+
+REM # OAuth2 Email Mapping
+REM SET OAUTH2_EMAIL_MAP=
 
 REM ------------------------------------------------------------
 
@@ -172,6 +198,9 @@ REM SET LDAP_CA_CERT=
 REM # LDAP_REJECT_UNAUTHORIZED : Reject Unauthorized Certificate
 REM # example : LDAP_REJECT_UNAUTHORIZED=true
 REM SET LDAP_REJECT_UNAUTHORIZED=false
+
+REM # Option to login to the LDAP server with the user's own username and password, instead of an administrator key. Default: false (use administrator key).
+REM SET LDAP_USER_AUTHENTICATION=true
 
 REM # LDAP_USER_SEARCH_FILTER : Optional extra LDAP filters. Don't forget the outmost enclosing parentheses if needed
 REM # example : LDAP_USER_SEARCH_FILTER=
@@ -273,10 +302,10 @@ REM SET LDAP_SYNC_ADMIN_GROUPS=group1,group2
 
 REM # Login to LDAP automatically with HTTP header.
 REM # In below example for siteminder, at right side of = is header name.
-REM SET HEADER_LOGIN_ID=BNPPUID
-REM SET HEADER_LOGIN_FIRSTNAME=BNPPFIRSTNAME
-REM SET HEADER_LOGIN_LASTNAME=BNPPLASTNAME
-REM SET HEADER_LOGIN_EMAIL=BNPPEMAILADDRESS
+REM SET HEADER_LOGIN_ID=HEADERUID
+REM SET HEADER_LOGIN_FIRSTNAME=HEADERFIRSTNAME
+REM SET HEADER_LOGIN_LASTNAME=HEADERLASTNAME
+REM SET HEADER_LOGIN_EMAIL=HEADEREMAILADDRESS
 
 REM ------------------------------------------------
 

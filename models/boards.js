@@ -208,7 +208,12 @@ Boards.attachSchema(new SimpleSchema({
       'pomegranate',
       'pumpkin',
       'wisteria',
+      'moderatepink',
+      'strongcyan',
+      'limegreen',
       'midnight',
+      'dark',
+      'relax',
     ],
     autoValue() { // eslint-disable-line consistent-return
       if (this.isInsert && !this.isSet) {
@@ -803,6 +808,13 @@ Boards.mutations({
   },
 });
 
+function boardRemover(userId, doc) {
+  [Cards, Lists, Swimlanes, Integrations, Rules, Activities].forEach((element) => {
+    element.remove({ boardId: doc._id });
+  });
+}
+
+
 if (Meteor.isServer) {
   Boards.allow({
     insert: Meteor.userId,
@@ -860,6 +872,22 @@ if (Meteor.isServer) {
       } else throw new Meteor.Error('error-board-doesNotExist');
     },
   });
+
+  Meteor.methods({
+    archiveBoard(boardId) {
+      check(boardId, String);
+      const board = Boards.findOne(boardId);
+      if (board) {
+        const userId = Meteor.userId();
+        const index = board.memberIndex(userId);
+        if (index >= 0) {
+          board.archive();
+          return true;
+        } else throw new Meteor.Error('error-board-notAMember');
+      } else throw new Meteor.Error('error-board-doesNotExist');
+    },
+  });
+
 }
 
 if (Meteor.isServer) {
@@ -964,6 +992,18 @@ if (Meteor.isServer) {
         }
       });
     }
+  });
+
+  Boards.before.remove((userId, doc) => {
+    boardRemover(userId, doc);
+    // Add removeBoard activity to keep it
+    Activities.insert({
+      userId,
+      type: 'board',
+      activityTypeId: doc._id,
+      activityType: 'removeBoard',
+      boardId: doc._id,
+    });
   });
 
   // Add a new activity if we add or remove a member to the board
@@ -1099,7 +1139,8 @@ if (Meteor.isServer) {
    * @description This allows to create a board.
    *
    * The color has to be chosen between `belize`, `nephritis`, `pomegranate`,
-   * `pumpkin`, `wisteria`, `midnight`:
+   * `pumpkin`, `wisteria`, `moderatepink`, `strongcyan`,
+   * `limegreen`, `midnight`, `dark`, `relax`:
    *
    * <img src="https://wekan.github.io/board-colors.png" width="40%" alt="Wekan logo" />
    *

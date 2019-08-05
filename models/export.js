@@ -50,7 +50,7 @@ if (Meteor.isServer) {
   });
 }
 
-class Exporter {
+export class Exporter {
   constructor(boardId) {
     this._boardId = boardId;
   }
@@ -179,7 +179,7 @@ class Exporter {
     };
     result.users = Users.find(byUserIds, userFields).fetch().map((user) => {
       // user avatar is stored as a relative url, we export absolute
-      if (user.profile.avatarUrl) {
+      if ((user.profile || {}).avatarUrl) {
         user.profile.avatarUrl = FlowRouter.url(user.profile.avatarUrl);
       }
       return user;

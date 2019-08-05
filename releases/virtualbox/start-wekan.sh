@@ -38,6 +38,10 @@
         #---------------------------------------------
         # CORS: Set Access-Control-Allow-Origin header. Example: *
         #export CORS=*
+        # To enable the Set Access-Control-Allow-Headers header. "Authorization,Content-Type" is required for cross-origin use of the API.
+        #export CORS_ALLOW_HEADERS=Authorization,Content-Type
+        # To enable the Set Access-Control-Expose-Headers header.  This is not needed for typical CORS situations. Example: *
+        #export CORS_EXPOSE_HEADERS=*
         #---------------------------------------------
         ## Optional: Integration with Matomo https://matomo.org that is installed to your server
         ## The address of the server where Matomo is hosted:
@@ -81,6 +85,10 @@
         #export OAUTH2_AUTH_ENDPOINT=/oauth2/v2.0/authorize
         #export OAUTH2_USERINFO_ENDPOINT=https://graph.microsoft.com/oidc/userinfo
         #export OAUTH2_TOKEN_ENDPOINT=/oauth2/v2.0/token
+        # OAUTH2 ID Token Whitelist Fields.
+        #export OAUTH2_ID_TOKEN_WHITELIST_FIELDS=[]
+        # OAUTH2 Request Permissions.
+        #export OAUTH2_REQUEST_PERMISSIONS='openid profile email'
         # The claim name you want to map to the unique ID field:
         #export OAUTH2_ID_MAP=email
         # The claim name you want to map to the username field:
@@ -191,6 +199,8 @@
         # LDAP_REJECT_UNAUTHORIZED : Reject Unauthorized Certificate
         # example :  export LDAP_REJECT_UNAUTHORIZED=true
         #export LDAP_REJECT_UNAUTHORIZED=false
+        # Option to login to the LDAP server with the user's own username and password, instead of an administrator key. Default: false (use administrator key).
+        #export LDAP_USER_AUTHENTICATION=true
         # LDAP_USER_SEARCH_FILTER : Optional extra LDAP filters. Don't forget the outmost enclosing parentheses if needed
         # example :  export LDAP_USER_SEARCH_FILTER=
         #export LDAP_USER_SEARCH_FILTER=
@@ -270,10 +280,10 @@
         #---------------------------------------------------------------------
         # Login to LDAP automatically with HTTP header.
         # In below example for siteminder, at right side of = is header name.
-        #export HEADER_LOGIN_ID=BNPPUID
-        #export HEADER_LOGIN_FIRSTNAME=BNPPFIRSTNAME
-        #export HEADER_LOGIN_LASTNAME=BNPPLASTNAME
-        #export HEADER_LOGIN_EMAIL=BNPPEMAILADDRESS
+        #export HEADER_LOGIN_ID=HEADERUID
+        #export HEADER_LOGIN_FIRSTNAME=HEADERFIRSTNAME
+        #export HEADER_LOGIN_LASTNAME=HEADERLASTNAME
+        #export HEADER_LOGIN_EMAIL=HEADEREMAILADDRESS
         #---------------------------------------------------------------------
         # LOGOUT_WITH_TIMER : Enables or not the option logout with timer
         # example : LOGOUT_WITH_TIMER=true

@@ -14,7 +14,7 @@ BlazeComponent.extendComponent({
       const currentBoardId = Session.get('currentBoard');
       if (!currentBoardId)
         return;
-      const handle = subManager.subscribe('board', currentBoardId);
+      const handle = subManager.subscribe('board', currentBoardId, false);
       Tracker.nonreactive(() => {
         Tracker.autorun(() => {
           this.isBoardReady.set(handle.ready());
@@ -25,6 +25,10 @@ BlazeComponent.extendComponent({
 
   onlyShowCurrentCard() {
     return Utils.isMiniScreen() && Session.get('currentCard');
+  },
+
+  goHome() {
+    FlowRouter.go('home');
   },
 
 }).register('board');
@@ -191,19 +195,19 @@ BlazeComponent.extendComponent({
   isViewSwimlanes() {
     const currentUser = Meteor.user();
     if (!currentUser) return false;
-    return (currentUser.profile.boardView === 'board-view-swimlanes');
+    return ((currentUser.profile || {}).boardView === 'board-view-swimlanes');
   },
 
   isViewLists() {
     const currentUser = Meteor.user();
     if (!currentUser) return true;
-    return (currentUser.profile.boardView === 'board-view-lists');
+    return ((currentUser.profile || {}).boardView === 'board-view-lists');
   },
 
   isViewCalendar() {
     const currentUser = Meteor.user();
     if (!currentUser) return false;
-    return (currentUser.profile.boardView === 'board-view-cal');
+    return ((currentUser.profile || {}).boardView === 'board-view-cal');
   },
 
   openNewListForm() {
@@ -335,6 +339,6 @@ BlazeComponent.extendComponent({
   isViewCalendar() {
     const currentUser = Meteor.user();
     if (!currentUser) return false;
-    return (currentUser.profile.boardView === 'board-view-cal');
+    return ((currentUser.profile || {}).boardView === 'board-view-cal');
   },
 }).register('calendarView');

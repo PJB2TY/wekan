@@ -166,7 +166,8 @@ if (Meteor.isServer) {
     }
     if (activity.attachmentId) {
       const attachment = activity.attachment();
-      params.attachment = attachment._id;
+      params.attachment = attachment.original.name;
+      params.attachmentId = attachment._id;
     }
     if (activity.checklistId) {
       const checklist = activity.checklist();
@@ -179,6 +180,7 @@ if (Meteor.isServer) {
     if (activity.customFieldId) {
       const customField = activity.customField();
       params.customField = customField.name;
+      params.customFieldValue = customField.text;
     }
     // Label activity did not work yet, unable to edit labels when tried this.
     //if (activity.labelId) {

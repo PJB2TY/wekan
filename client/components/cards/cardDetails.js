@@ -345,12 +345,12 @@ Template.cardDetailsActionsPopup.events({
   'click .js-move-card-to-top' (evt) {
     evt.preventDefault();
     const minOrder = _.min(this.list().cards(this.swimlaneId).map((c) => c.sort));
-    this.move(this.swimlaneId, this.listId, minOrder - 1);
+    this.move(this.boardId, this.swimlaneId, this.listId, minOrder - 1);
   },
   'click .js-move-card-to-bottom' (evt) {
     evt.preventDefault();
     const maxOrder = _.max(this.list().cards(this.swimlaneId).map((c) => c.sort));
-    this.move(this.swimlaneId, this.listId, maxOrder + 1);
+    this.move(this.boardId, this.swimlaneId, this.listId, maxOrder + 1);
   },
   'click .js-archive' (evt) {
     evt.preventDefault();
@@ -424,7 +424,7 @@ Template.moveCardPopup.events({
 });
 BlazeComponent.extendComponent({
   onCreated() {
-    subManager.subscribe('board', Session.get('currentBoard'));
+    subManager.subscribe('board', Session.get('currentBoard'), false);
     this.selectedBoardId = new ReactiveVar(Session.get('currentBoard'));
   },
 
@@ -453,7 +453,7 @@ BlazeComponent.extendComponent({
     return [{
       'change .js-select-boards'(evt) {
         this.selectedBoardId.set($(evt.currentTarget).val());
-        subManager.subscribe('board', this.selectedBoardId.get());
+        subManager.subscribe('board', this.selectedBoardId.get(), false);
       },
     }];
   },
@@ -676,7 +676,7 @@ BlazeComponent.extendComponent({
         if (selection === 'none') {
           this.parentBoard.set(null);
         } else {
-          subManager.subscribe('board', $(evt.currentTarget).val());
+          subManager.subscribe('board', $(evt.currentTarget).val(), false);
           this.parentBoard.set(selection);
           list.prop('disabled', false);
         }
