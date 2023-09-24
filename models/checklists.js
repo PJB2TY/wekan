@@ -1,3 +1,5 @@
+import { ReactiveCache, ReactiveMiniMongoIndex } from '/imports/reactiveCache';
+
 Checklists = new Mongo.Collection('checklists');
 
 /**
@@ -24,6 +26,14 @@ Checklists.attachSchema(
        */
       type: Date,
       optional: true,
+    },
+    showAtMinicard: {
+      /**
+       * Show at minicard. Default: false.
+       */
+      type: Boolean,
+      optional: true,
+      defaultValue: false,
     },
     createdAt: {
       /**
@@ -66,11 +76,11 @@ Checklists.attachSchema(
 
 Checklists.helpers({
   copy(newCardId) {
-    const oldChecklistId = this._id;
-    this._id = null;
-    this.cardId = newCardId;
-    const newChecklistId = Checklists.insert(this);
-    ChecklistItems.find({ checklistId: oldChecklistId }).forEach(function(
+    let copyObj = Object.assign({}, this);
+    delete copyObj._id;
+    copyObj.cardId = newCardId;
+    const newChecklistId = Checklists.insert(copyObj);
+    ReactiveCache.getChecklistItems({ checklistId: this._id }).forEach(function(
       item,
     ) {
       item._id = null;
@@ -81,57 +91,71 @@ Checklists.helpers({
   },
 
   itemCount() {
-    return ChecklistItems.find({ checklistId: this._id }).count();
+    const ret = this.items().length;
+    return ret;
   },
   items() {
-    return ChecklistItems.find(
-      {
-        checklistId: this._id,
-      },
-      { sort: ['sort'] },
-    );
+    const ret = ReactiveMiniMongoIndex.getChecklistItemsWithChecklistId(this._id, {}, { sort: ['sort'] });
+    return ret;
+
+  },
+  firstItem() {
+    const ret = _.first(this.items());
+    return ret;
   },
   lastItem() {
-    const allItems = this.items().fetch();
-    const ret = allItems[allItems.length - 1];
+    const ret = _.last(this.items());
     return ret;
   },
   finishedCount() {
-    return ChecklistItems.find({
-      checklistId: this._id,
-      isFinished: true,
-    }).count();
+    const ret = this.items().filter(_item => _item.isFinished).length;
+    return ret;
+  },
+  /** returns the finished percent of the checklist */
+  finishedPercent() {
+    const count = this.itemCount();
+    const checklistItemsFinished = this.finishedCount();
+
+    let ret = 0;
+
+    if (count > 0) {
+      ret = Math.round(checklistItemsFinished / count * 100);
+    }
+    return ret;
   },
   isFinished() {
     return 0 !== this.itemCount() && this.itemCount() === this.finishedCount();
   },
   checkAllItems() {
-    const checkItems = ChecklistItems.find({ checklistId: this._id });
+    const checkItems = ReactiveCache.getChecklistItems({ checklistId: this._id });
     checkItems.forEach(function(item) {
       item.check();
     });
   },
   uncheckAllItems() {
-    const checkItems = ChecklistItems.find({ checklistId: this._id });
+    const checkItems = ReactiveCache.getChecklistItems({ checklistId: this._id });
     checkItems.forEach(function(item) {
       item.uncheck();
     });
   },
   itemIndex(itemId) {
-    const items = self.findOne({ _id: this._id }).items;
+    const items = ReactiveCache.getChecklist({ _id: this._id }).items;
     return _.pluck(items, '_id').indexOf(itemId);
+  },
+  hasShowChecklistAtMinicard() {
+    return showAtMinicard || false;
   },
 });
 
 Checklists.allow({
   insert(userId, doc) {
-    return allowIsBoardMemberByCard(userId, Cards.findOne(doc.cardId));
+    return allowIsBoardMemberByCard(userId, ReactiveCache.getCard(doc.cardId));
   },
   update(userId, doc) {
-    return allowIsBoardMemberByCard(userId, Cards.findOne(doc.cardId));
+    return allowIsBoardMemberByCard(userId, ReactiveCache.getCard(doc.cardId));
   },
   remove(userId, doc) {
-    return allowIsBoardMemberByCard(userId, Cards.findOne(doc.cardId));
+    return allowIsBoardMemberByCard(userId, ReactiveCache.getCard(doc.cardId));
   },
   fetch: ['userId', 'cardId'],
 });
@@ -147,16 +171,56 @@ Checklists.mutations({
   setTitle(title) {
     return { $set: { title } };
   },
+  /** move the checklist to another card
+   * @param newCardId move the checklist to this cardId
+   */
+  move(newCardId) {
+    // update every activity
+    ReactiveCache.getActivities(
+      {checklistId: this._id}
+    ).forEach(activity => {
+      Activities.update(activity._id, {
+        $set: {
+          cardId: newCardId,
+        },
+      });
+    });
+    // update every checklist-item
+    ReactiveCache.getChecklistItems(
+      {checklistId: this._id}
+    ).forEach(checklistItem => {
+      ChecklistItems.update(checklistItem._id, {
+        $set: {
+          cardId: newCardId,
+        },
+      });
+    });
+    // update the checklist itself
+    return {
+      $set: {
+        cardId: newCardId,
+      },
+    };
+  },
+
+  toggleShowChecklistAtMinicard(checklistId) {
+    const value = this.hasShowChecklistAtMinicard();
+    return {
+      $set: {
+        'showAtMinicard': !value,
+      },
+    };
+  },
 });
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    Checklists._collection._ensureIndex({ modifiedAt: -1 });
-    Checklists._collection._ensureIndex({ cardId: 1, createdAt: 1 });
+    Checklists._collection.createIndex({ modifiedAt: -1 });
+    Checklists._collection.createIndex({ cardId: 1, createdAt: 1 });
   });
 
   Checklists.after.insert((userId, doc) => {
-    const card = Cards.findOne(doc.cardId);
+    const card = ReactiveCache.getCard(doc.cardId);
     Activities.insert({
       userId,
       activityType: 'addChecklist',
@@ -170,8 +234,8 @@ if (Meteor.isServer) {
   });
 
   Checklists.before.remove((userId, doc) => {
-    const activities = Activities.find({ checklistId: doc._id });
-    const card = Cards.findOne(doc.cardId);
+    const activities = ReactiveCache.getActivities({ checklistId: doc._id });
+    const card = ReactiveCache.getCard(doc.cardId);
     if (activities) {
       activities.forEach(activity => {
         Activities.remove(activity._id);
@@ -181,7 +245,7 @@ if (Meteor.isServer) {
       userId,
       activityType: 'removeChecklist',
       cardId: doc.cardId,
-      boardId: Cards.findOne(doc.cardId).boardId,
+      boardId: ReactiveCache.getCard(doc.cardId).boardId,
       checklistId: doc._id,
       checklistName: doc.title,
       listId: card.listId,
@@ -204,10 +268,10 @@ if (Meteor.isServer) {
     'GET',
     '/api/boards/:boardId/cards/:cardId/checklists',
     function(req, res) {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramCardId = req.params.cardId;
-      const checklists = Checklists.find({ cardId: paramCardId }).map(function(
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+      const checklists = ReactiveCache.getChecklists({ cardId: paramCardId }).map(function(
         doc,
       ) {
         return {
@@ -248,16 +312,16 @@ if (Meteor.isServer) {
     'GET',
     '/api/boards/:boardId/cards/:cardId/checklists/:checklistId',
     function(req, res) {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramChecklistId = req.params.checklistId;
       const paramCardId = req.params.cardId;
-      const checklist = Checklists.findOne({
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+      const checklist = ReactiveCache.getChecklist({
         _id: paramChecklistId,
         cardId: paramCardId,
       });
       if (checklist) {
-        checklist.items = ChecklistItems.find({
+        checklist.items = ReactiveCache.getChecklistItems({
           checklistId: checklist._id,
         }).map(function(doc) {
           return {
@@ -292,14 +356,12 @@ if (Meteor.isServer) {
     'POST',
     '/api/boards/:boardId/cards/:cardId/checklists',
     function(req, res) {
-      Authentication.checkUserId(req.userId);
       // Check user is logged in
       //Authentication.checkLoggedIn(req.userId);
       const paramBoardId = req.params.boardId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       // Check user has permission to add checklist to the card
-      const board = Boards.findOne({
-        _id: paramBoardId,
-      });
+      const board = ReactiveCache.getBoard(paramBoardId);
       const addPermission = allowIsBoardMemberCommentOnly(req.userId, board);
       Authentication.checkAdminOrCondition(req.userId, addPermission);
       const paramCardId = req.params.cardId;
@@ -354,9 +416,9 @@ if (Meteor.isServer) {
     'DELETE',
     '/api/boards/:boardId/cards/:cardId/checklists/:checklistId',
     function(req, res) {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramChecklistId = req.params.checklistId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       Checklists.remove({ _id: paramChecklistId });
       JsonRoutes.sendResult(res, {
         code: 200,

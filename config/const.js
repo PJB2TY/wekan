@@ -15,6 +15,7 @@ export const ALLOWED_BOARD_COLORS = [
   'natural',
   'modern',
   'moderndark',
+  'exodark',
 ];
 export const ALLOWED_COLORS = [
   'white',
@@ -49,6 +50,14 @@ export const TYPE_LINKED_BOARD = 'cardType-linkedBoard';
 export const TYPE_LINKED_CARD = 'cardType-linkedCard';
 export const TYPE_TEMPLATE_BOARD = 'template-board';
 export const TYPE_TEMPLATE_CONTAINER = 'template-container';
+export const TYPE_TEMPLATE_CARD = 'template-card';
+export const TYPE_TEMPLATE_LIST = 'template-list';
+export const CARD_TYPES = [
+  TYPE_CARD,
+  TYPE_LINKED_CARD,
+  TYPE_LINKED_BOARD,
+  TYPE_TEMPLATE_CARD
+];
 export const ALLOWED_WAIT_SPINNERS = [
   'Bounce',
   'Cube',

@@ -2,33 +2,42 @@ template(name="cardDetailsPopup")
   +cardDetails(popupCard)
 
 template(name="cardDetails")
+
+  +attachmentViewer
+
   section.card-details.js-card-details(class='{{#if cardMaximized}}card-details-maximized{{/if}}' class='{{#if isPopup}}card-details-popup{{/if}}'): .card-details-canvas
     .card-details-header(class='{{#if colorClass}}card-details-{{colorClass}}{{/if}}')
       +inlinedForm(classNames="js-card-details-title")
         +editCardTitleForm
       else
         unless isMiniScreen
-          a.fa.fa-times-thin.close-card-details.js-close-card-details(title="{{_ 'close-card'}}")
-          unless cardMaximized
-            a.fa.fa-window-maximize.maximize-card-details.js-maximize-card-details(title="{{_ 'maximize-card'}}")
-          if cardMaximized
-            a.fa.fa-window-minimize.minimize-card-details.js-minimize-card-details(title="{{_ 'minimize-card'}}")
+          unless isPopup
+            a.fa.fa-times-thin.close-card-details.js-close-card-details(title="{{_ 'close-card'}}")
+            if cardMaximized
+              a.fa.fa-window-minimize.minimize-card-details.js-minimize-card-details(title="{{_ 'minimize-card'}}")
+            else
+              a.fa.fa-window-maximize.maximize-card-details.js-maximize-card-details(title="{{_ 'maximize-card'}}")
           if currentUser.isBoardMember
             a.fa.fa-navicon.card-details-menu.js-open-card-details-menu(title="{{_ 'cardDetailsActionsPopup-title'}}")
-            input.inline-input(type="text" id="cardURL_copy" value="{{ originRelativeUrl }}")
             a.fa.fa-link.card-copy-button.js-copy-link(
+              id="cardURL_copy"
               class="fa-link"
               title="{{_ 'copy-card-link-to-clipboard'}}"
+              href="{{ originRelativeUrl }}"
             )
-        if isMiniScreen
+            span.copied-tooltip {{_ 'copied'}}
+        else
           unless isPopup
             a.fa.fa-times-thin.close-card-details.js-close-card-details(title="{{_ 'close-card'}}")
           if currentUser.isBoardMember
             a.fa.fa-navicon.card-details-menu-mobile-web.js-open-card-details-menu(title="{{_ 'cardDetailsActionsPopup-title'}}")
-            a.fa.fa-link.card-copy-mobile-button(
+            a.fa.fa-link.card-copy-mobile-button.js-copy-link(
+              id="cardURL_copy"
               class="fa-link"
               title="{{_ 'copy-card-link-to-clipboard'}}"
+              href="{{ originRelativeUrl }}"
             )
+            span.copied-tooltip {{_ 'copied'}}
         h2.card-details-title.js-card-title(
           class="{{#if canModifyCard}}js-open-inlined-form is-editable{{/if}}")
             +viewer
@@ -73,8 +82,10 @@ template(name="cardDetails")
                 a.card-label.add-label.js-add-labels(title="{{_ 'card-labels-title'}}")
                   i.fa.fa-plus
 
-        if currentBoard.allowsReceivedDate
+        if currentBoard.hasAnyAllowsDate
           hr
+
+        if currentBoard.allowsReceivedDate
           .card-details-item.card-details-item-received
             h3.card-details-item-title
               i.fa.fa-sign-out
@@ -126,7 +137,9 @@ template(name="cardDetails")
                   a.card-label.add-label.js-end-date
                     i.fa.fa-plus
 
-        hr
+        if currentBoard.hasAnyAllowsUser
+          hr
+
         if currentBoard.allowsCreator
           .card-details-item.card-details-item-creator
             h3.card-details-item-title
@@ -166,17 +179,6 @@ template(name="cardDetails")
               unless assigneeSelected
                 a.assignee.add-assignee.card-details-item-add-button.js-add-assignees(title="{{_ 'assignee'}}")
                   i.fa.fa-plus
-
-        //.card-details-items
-        if getSpentTime
-          .card-details-item.card-details-item-spent
-            if getIsOvertime
-              h3.card-details-item-title
-                | {{_ 'overtime-hours'}}
-            else
-              h3.card-details-item-title
-                | {{_ 'spent-time-hours'}}
-            +cardSpentTime
 
         //.card-details-items
         if currentBoard.allowsRequestedBy
@@ -219,6 +221,9 @@ template(name="cardDetails")
               +viewer
                 = getAssignedBy
 
+        if $or currentBoard.allowsCardSortingByNumber getSpentTime
+          hr
+
         if currentBoard.allowsCardSortingByNumber
           .card-details-item.card-details-sort-order
             h3.card-details-item-title
@@ -232,14 +237,28 @@ template(name="cardDetails")
                   +viewer
                     = sort
 
+        if currentBoard.allowsShowLists
+          .card-details-item.card-details-show-lists
+            h3.card-details-item-title
+              i.fa.fa-list
+              | {{_ 'list'}}
+            select.js-select-card-details-lists(disabled="{{#unless canModifyCard}}disabled{{/unless}}")
+              each currentBoard.lists
+                option(value="{{_id}}" selected="{{#if isCurrentListId _id}}selected{{/if}}") {{title}}
+
+        //.card-details-items
+        if getSpentTime
+          .card-details-item.card-details-item-spent
+            if getIsOvertime
+              h3.card-details-item-title
+                | {{_ 'overtime-hours'}}
+            else
+              h3.card-details-item-title
+                | {{_ 'spent-time-hours'}}
+            +cardSpentTime
+
         //.card-details-items
         if customFieldsWD
-          .material-toggle-switch(title="{{_ 'change'}} {{_ 'custom-fields'}} {{_ 'layout'}}")
-            if customFieldsGrid
-              input.toggle-switch(type="checkbox" id="toggleCustomFieldsGridButton" checked="checked")
-            else
-              input.toggle-switch(type="checkbox" id="toggleCustomFieldsGridButton")
-            label.toggle-label(for="toggleCustomFieldsGridButton")
           unless customFieldsGrid
             hr
           each customFieldsWD
@@ -250,6 +269,15 @@ template(name="cardDetails")
                 i.fa.fa-list-alt
                 = definition.name
               +cardCustomField
+
+          if $gt customFieldsWD.length 1
+            .material-toggle-switch(title="{{_ 'change'}} {{_ 'custom-fields'}} {{_ 'layout'}}")
+              if customFieldsGrid
+                input.toggle-switch(type="checkbox" id="toggleCustomFieldsGridButton" checked="checked")
+              else
+                input.toggle-switch(type="checkbox" id="toggleCustomFieldsGridButton")
+              label.toggle-label(for="toggleCustomFieldsGridButton")
+          a.fa.fa-plus.js-custom-fields.card-details-item.custom-fields(title="{{_ 'custom-fields'}}")
 
       if getVoteQuestion
         hr
@@ -516,8 +544,8 @@ template(name="cardDetails")
           +viewer
             = getDescription
 
-      .card-checklist-attachmentGalerys
-        .card-checklist-attachmentGalery.card-checklists
+      .card-checklist-attachmentGalleries
+        .card-checklist-attachmentGallery.card-checklists
           if currentBoard.allowsChecklists
             hr
             +checklists(cardId = _id)
@@ -529,8 +557,16 @@ template(name="cardDetails")
           h3.card-details-item-title
             i.fa.fa-paperclip
             | {{_ 'attachments'}}
-          .card-checklist-attachmentGalery.card-attachmentGalery
-            +attachmentsGalery
+          if Meteor.settings.public.attachmentsUploadMaxSize
+            | {{_ 'max-upload-filesize'}} {{Meteor.settings.public.attachmentsUploadMaxSize}}
+            br
+          if Meteor.settings.public.attachmentsUploadMimeTypes
+            | {{_ 'allowed-upload-filetypes'}} {{Meteor.settings.public.attachmentsUploadMimeTypes}}
+            br
+          | {{_ 'invalid-file'}}
+          .card-checklist-attachmentGallery.card-attachmentGallery
+            +attachmentGallery
+      hr
 
     .card-details-right
 
@@ -561,6 +597,8 @@ template(name="cardDetails")
             +activities(card=this mode="card")
 
 template(name="editCardTitleForm")
+  a.fa.fa-copy(title="{{_ 'copy-text-to-clipboard'}}")
+  span.copied-tooltip {{_ 'copied'}}
   textarea.js-edit-card-title(rows='1' autofocus dir="auto")
     = getTitle
   .edit-controls.clearfix
@@ -656,13 +694,12 @@ template(name="cardDetailsActionsPopup")
           i.fa.fa-copy
           | {{_ 'copyCardPopup-title'}}
   unless currentUser.isWorker
-    hr
     ul.pop-over-list
       li
         a.js-copy-checklist-cards
-          i.fa.fa-list
           i.fa.fa-copy
-          | {{_ 'copyChecklistToManyCardsPopup-title'}}
+          i.fa.fa-copy
+          | {{_ 'copyManyCardsPopup-title'}}
     unless archived
       hr
       ul.pop-over-list
@@ -686,39 +723,42 @@ template(name="exportCardPopup")
         | {{_ 'export-card-pdf'}}
 
 template(name="moveCardPopup")
-  +boardsAndLists
+  +copyAndMoveCard
 
 template(name="copyCardPopup")
   label(for='copy-card-title') {{_ 'title'}}:
   textarea#copy-card-title.minicard-composer-textarea.js-card-title(autofocus)
     = getTitle
-  +boardsAndLists
+  +copyAndMoveCard
 
-template(name="copyChecklistToManyCardsPopup")
-  label(for='copy-checklist-cards-title') {{_ 'copyChecklistToManyCardsPopup-instructions'}}:
+template(name="copyManyCardsPopup")
+  label(for='copy-checklist-cards-title') {{_ 'copyManyCardsPopup-instructions'}}:
   textarea#copy-card-title.minicard-composer-textarea.js-card-title(autofocus)
-    | {{_ 'copyChecklistToManyCardsPopup-format'}}
-  +boardsAndLists
+    | {{_ 'copyManyCardsPopup-format'}}
+  +copyAndMoveCard
 
-template(name="boardsAndLists")
+template(name="convertChecklistItemToCardPopup")
+  label(for='convert-checklist-item-to-card-title') {{_ 'title'}}:
+  textarea#copy-card-title.minicard-composer-textarea.js-card-title(autofocus)
+    = item.title
+  +copyAndMoveCard
+
+template(name="copyAndMoveCard")
   unless currentUser.isWorker
     label {{_ 'boards'}}:
     select.js-select-boards(autofocus)
       each boards
-        if $eq _id currentBoard._id
-          option(value="{{_id}}" selected) {{_ 'current'}}
-        else
-          option(value="{{_id}}") {{title}}
+        option(value="{{_id}}" selected="{{#if isDialogOptionBoardId _id}}selected{{/if}}") {{title}}
 
   label {{_ 'swimlanes'}}:
   select.js-select-swimlanes
     each swimlanes
-      option(value="{{_id}}") {{title}}
+      option(value="{{_id}}" selected="{{#if isDialogOptionSwimlaneId _id}}selected{{/if}}") {{title}}
 
   label {{_ 'lists'}}:
   select.js-select-lists
-    each aBoardLists
-      option(value="{{_id}}") {{title}}
+    each lists
+      option(value="{{_id}}" selected="{{#if isDialogOptionListId _id}}selected{{/if}}") {{title}}
 
   .edit-controls.clearfix
     button.primary.confirm.js-done {{_ 'done'}}
@@ -785,6 +825,7 @@ template(name="cardMorePopup")
       i.fa.colorful(class="{{#if board.isPublic}}fa-globe{{else}}fa-lock{{/if}}")
       input.inline-input(type="text" id="cardURL" readonly value="{{ originRelativeUrl }}" autofocus="autofocus")
       button.js-copy-card-link-to-clipboard(class="btn" id="clipboard") {{_ 'copy-card-link-to-clipboard'}}
+      .copied-tooltip {{_ 'copied'}}
     span.clearfix
     br
     h2 {{_ 'change-card-parent'}}

@@ -1,8 +1,15 @@
+import fs from 'fs';
+import path from 'path';
+import { TAPi18n } from '/imports/i18n';
 import AccountSettings from '../models/accountSettings';
 import TableVisibilityModeSettings from '../models/tableVisibilityModeSettings';
 import Actions from '../models/actions';
 import Activities from '../models/activities';
 import Announcements from '../models/announcements';
+import Attachments from '../models/attachments';
+//import AttachmentsOld from '../models/attachments_old';
+import Avatars from '../models/avatars';
+//import AvatarsOld from '../models/avatars_old';
 import Boards from '../models/boards';
 import CardComments from '../models/cardComments';
 import Cards from '../models/cards';
@@ -67,6 +74,40 @@ Migrations.add('board-background-color', () => {
   );
 });
 
+Migrations.add('add-cardcounterlist-allowed', () => {
+  Boards.update(
+    {
+      allowsCardCounterList: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsCardCounterList: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+/*
+Migrations.add('add-boardmemberlist-allowed', () => {
+  Boards.update(
+    {
+      allowsBoardMemberList: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsBoardMemberList: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+*/
+
 Migrations.add('lowercase-board-permission', () => {
   ['Public', 'Private'].forEach(permission => {
     Boards.update(
@@ -77,6 +118,7 @@ Migrations.add('lowercase-board-permission', () => {
   });
 });
 
+/*
 // Security migration: see https://github.com/wekan/wekan/issues/99
 Migrations.add('change-attachments-type-for-non-images', () => {
   const newTypeForNonImage = 'application/octet-stream';
@@ -106,6 +148,8 @@ Migrations.add('card-covers', () => {
   Attachments.update({}, { $unset: { cover: '' } }, noValidateMulti);
 });
 
+*/
+
 Migrations.add('use-css-class-for-boards-colors', () => {
   const associationTable = {
     '#27AE60': 'nephritis',
@@ -124,6 +168,7 @@ Migrations.add('use-css-class-for-boards-colors', () => {
     '#596557': 'natural',
     '#2A80B8': 'modern',
     '#2a2a2a': 'moderndark',
+    '#222222': 'exodark',
   };
   Boards.find().forEach(board => {
     const oldBoardColor = board.background.color;
@@ -464,6 +509,38 @@ Migrations.add('add-hide-logo', () => {
   );
 });
 
+Migrations.add('add-hide-card-counter-list', () => {
+  Settings.update(
+    {
+      hideCardCounterList: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        hideCardCounterList: false,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-hide-board-member-list', () => {
+  Settings.update(
+    {
+      hideBoardMemberList: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        hideBoardMemberList: false,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
 Migrations.add('add-displayAuthenticationMethod', () => {
   Settings.update(
     {
@@ -672,7 +749,7 @@ Migrations.add('add-missing-created-and-modified', () => {
     modifiedAtTables.map(db =>
       db
         .rawCollection()
-        .update(
+        .updateMany(
           { modifiedAt: { $exists: false } },
           { $set: { modifiedAt: new Date() } },
           { multi: true },
@@ -680,7 +757,7 @@ Migrations.add('add-missing-created-and-modified', () => {
         .then(() =>
           db
             .rawCollection()
-            .update(
+            .updateMany(
               { createdAt: { $exists: false } },
               { $set: { createdAt: new Date() } },
               { multi: true },
@@ -727,7 +804,7 @@ Migrations.add('fix-incorrect-dates', () => {
       .rawCollection()
       .find({ $or: [{ createdAt: { $type: 1 } }, { updatedAt: { $type: 1 } }] })
       .forEach(({ _id, createdAt, updatedAt }) => {
-        t.rawCollection().update(
+        t.rawCollection().updateMany(
           { _id },
           {
             $set: {
@@ -1028,6 +1105,22 @@ Migrations.add('add-description-text-allowed', () => {
   );
 });
 
+Migrations.add('add-description-text-allowed-on-minicard', () => {
+  Boards.update(
+    {
+      allowsDescriptionTextOnMinicard: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsDescriptionTextOnMinicard: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
 Migrations.add('add-sort-field-to-boards', () => {
   Boards.find().forEach((board, index) => {
     if (!board.hasOwnProperty('sort')) {
@@ -1059,6 +1152,38 @@ Migrations.add('add-hide-logo-by-default', () => {
     {
       $set: {
         hideLogo: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-hide-card-counter-list-by-default', () => {
+  Settings.update(
+    {
+      hideCardCounterList: {
+        hideCardCounterList: false,
+      },
+    },
+    {
+      $set: {
+        hideCardCounterList: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-hide-board-member-list-by-default', () => {
+  Settings.update(
+    {
+      hideBoardMemberList: {
+        hideBoardMember: false,
+      },
+    },
+    {
+      $set: {
+        hideBoardMemberList: true,
       },
     },
     noValidateMulti,
@@ -1103,3 +1228,216 @@ Migrations.add('assign-boardwise-card-numbers', () => {
     });
   })
 });
+
+Migrations.add('add-card-details-show-lists', () => {
+  Boards.update(
+    {
+      allowsShowLists: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsShowLists: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+/*
+Migrations.add('migrate-attachments-collectionFS-to-ostrioFiles', () => {
+  Meteor.settings.public.ostrioFilesMigrationInProgress = "true";
+  AttachmentsOld.find().forEach(function(fileObj) {
+    const newFileName = fileObj.name();
+    const storagePath = Attachments.storagePath({});
+    // OLD:
+    // const filePath = path.join(storagePath, `${fileObj._id}-${newFileName}`);
+    // NEW: Save file only with filename of ObjectID, not including filename.
+    // Fixes https://github.com/wekan/wekan/issues/4416#issuecomment-1510517168
+    //const filePath = path.join(storagePath, `${fileObj._id}`);
+    const filePath = path.join(storagePath, `${fileObj._id}-${newFileName}`);
+
+    // This is "example" variable, change it to the userId that you might be using.
+    const userId = fileObj.userId;
+
+    const fileType = fileObj.type();
+    const fileSize = fileObj.size();
+    const fileId = fileObj._id;
+
+    const readStream = fileObj.createReadStream('attachments');
+    const writeStream = fs.createWriteStream(filePath);
+
+    writeStream.on('error', function(err) {
+      console.log('Writing error: ', err, filePath);
+    });
+
+    // Once we have a file, then upload it to our new data storage
+    readStream.on('end', () => {
+      console.log('Ended: ', filePath);
+      // UserFiles is the new Meteor-Files/FilesCollection collection instance
+
+      Attachments.addFile(
+        filePath,
+        {
+          fileName: newFileName,
+          type: fileType,
+          meta: {
+            boardId: fileObj.boardId,
+            cardId: fileObj.cardId,
+            listId: fileObj.listId,
+            swimlaneId: fileObj.swimlaneId,
+            uploadedBeforeMigration: fileObj.uploadedAt,
+            migrationTime: new Date(),
+            copies: fileObj.copies,
+            source: 'import'
+          },
+          userId,
+          size: fileSize,
+          fileId,
+        },
+        (err, fileRef) => {
+          if (err) {
+            console.log(err);
+          } else {
+            console.log('File Inserted: ', fileRef._id);
+            // Set the userId again
+            Attachments.update({ _id: fileRef._id }, { $set: { userId } });
+            fileObj.remove();
+          }
+        },
+        true,
+      ); // proceedAfterUpload
+    });
+
+    readStream.on('error', error => {
+      console.log('Error: ', filePath, error);
+    });
+
+    readStream.pipe(writeStream);
+  });
+  Meteor.settings.public.ostrioFilesMigrationInProgress = "false";
+});
+
+Migrations.add('migrate-avatars-collectionFS-to-ostrioFiles', () => {
+  Meteor.settings.public.ostrioFilesMigrationInProgress = "true";
+  AvatarsOld.find().forEach(function(fileObj) {
+    const newFileName = fileObj.name();
+    const storagePath = Avatars.storagePath({});
+    // OLD:
+    // const filePath = path.join(storagePath, `${fileObj._id}-${newFileName}`);
+    // NEW: Save file only with filename of ObjectID, not including filename.
+    // Fixes https://github.com/wekan/wekan/issues/4416#issuecomment-1510517168
+    //const filePath = path.join(storagePath, `${fileObj._id}`);
+    const filePath = path.join(storagePath, `${fileObj._id}-${newFileName}`);
+
+    // This is "example" variable, change it to the userId that you might be using.
+    const userId = fileObj.userId;
+
+    const fileType = fileObj.type();
+    const fileSize = fileObj.size();
+    const fileId = fileObj._id;
+
+    const readStream = fileObj.createReadStream('avatars');
+    const writeStream = fs.createWriteStream(filePath);
+
+    writeStream.on('error', function(err) {
+      console.log('Writing error: ', err, filePath);
+    });
+
+    // Once we have a file, then upload it to our new data storage
+    readStream.on('end', () => {
+      console.log('Ended: ', filePath);
+      // UserFiles is the new Meteor-Files/FilesCollection collection instance
+
+      Avatars.addFile(
+        filePath,
+        {
+          fileName: newFileName,
+          type: fileType,
+          meta: {
+            boardId: fileObj.boardId,
+            cardId: fileObj.cardId,
+            listId: fileObj.listId,
+            swimlaneId: fileObj.swimlaneId,
+          },
+          userId,
+          size: fileSize,
+          fileId,
+        },
+        (err, fileRef) => {
+          if (err) {
+            console.log(err);
+          } else {
+            console.log('File Inserted: ', newFileName, fileRef._id);
+            // Set the userId again
+            Avatars.update({ _id: fileRef._id }, { $set: { userId } });
+            Users.find().forEach(user => {
+              const old_url = fileObj.url();
+              new_url = Avatars.findOne({ _id: fileRef._id }).link(
+                'original',
+                '/',
+              );
+              if (user.profile.avatarUrl !== undefined) {
+                if (user.profile.avatarUrl.startsWith(old_url)) {
+                  // Set avatar url to new url
+                  Users.direct.update(
+                    { _id: user._id },
+                    { $set: { 'profile.avatarUrl': new_url } },
+                    noValidate,
+                  );
+                  console.log('User avatar updated: ', user._id, new_url);
+                }
+              }
+            });
+            fileObj.remove();
+          }
+        },
+        true, // proceedAfterUpload
+      );
+    });
+
+    readStream.on('error', error => {
+      console.log('Error: ', filePath, error);
+    });
+
+    readStream.pipe(writeStream);
+  });
+  Meteor.settings.public.ostrioFilesMigrationInProgress = "false";
+});
+*/
+
+Migrations.add('migrate-attachment-drop-index-cardId', () => {
+  try {
+    Attachments.collection._dropIndex({'cardId': 1});
+  } catch (error) {
+  }
+});
+
+Migrations.add('migrate-attachment-migration-fix-source-import', () => {
+  // there was an error at first versions, so source was import, instead of import
+  Attachments.update(
+    {"meta.source":"import,"},
+    {$set:{"meta.source":"import"}},
+    noValidateMulti
+  );
+});
+
+/*
+Migrations.add('attachment-cardCopy-fix-boardId-etc', () => {
+  Attachments.find( {"meta.source": "copy"} ).forEach(_attachment => {
+    const cardId = _attachment.meta.cardId;
+    const card = Cards.findOne(cardId);
+    if (card.boardId !== undefined && card.listId !== undefined && card.swimlaneId !== undefined) {
+      console.log("update attachment id: ", _attachment._id);
+      Attachments.update(_attachment._id, {
+        $set: {
+          "meta.boardId": card.boardId,
+          "meta.listId": card.listId,
+          "meta.swimlaneId": card.swimlaneId,
+        }
+      });
+    }
+  });
+});
+*/

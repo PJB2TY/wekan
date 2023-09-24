@@ -15,12 +15,12 @@ template(name="listHeader")
           = title
         if wipLimit.enabled
          |&nbsp;(
-         span(class="{{#if exceededWipLimit}}highlight{{/if}}") {{cards.count}}
+         span(class="{{#if exceededWipLimit}}highlight{{/if}}") {{cards.length}}
          |/#{wipLimit.value})
 
-        if showCardsCountForList cards.count
-          |&nbsp;
-          span(class="cardCount") {{cardsCount}} {{cardsCountForListIsOne cards.count}}
+      if showCardsCountForList cards.length
+        span.cardCount {{cardsCount}} {{cardsCountForListIsOne cards.length}}
+
       if isMiniScreen
         if currentList
           if isWatching
@@ -28,7 +28,7 @@ template(name="listHeader")
           div.list-header-menu
             unless currentUser.isCommentOnly
               if canSeeAddCard
-                a.js-add-card.fa.fa-plus.list-header-plus-icon(title="{{_ 'add-card-to-top-of-list'}}")
+                a.js-add-card.fa.fa-plus.list-header-plus-top(title="{{_ 'add-card-to-top-of-list'}}")
               a.fa.fa-navicon.js-open-list-menu(title="{{_ 'listActionPopup-title'}}")
         else
           a.list-header-menu-icon.fa.fa-angle-right.js-select-list
@@ -39,12 +39,12 @@ template(name="listHeader")
         div.list-header-menu
           unless currentUser.isCommentOnly
             //if isBoardAdmin
-            //  a.fa.js-list-star.list-header-plus-icon(class="fa-star{{#unless starred}}-o{{/unless}}")
+            //  a.fa.js-list-star.list-header-plus-top(class="fa-star{{#unless starred}}-o{{/unless}}")
             if canSeeAddCard
-              a.js-add-card.fa.fa-plus.list-header-plus-icon(title="{{_ 'add-card-to-top-of-list'}}")
+              a.js-add-card.fa.fa-plus.list-header-plus-top(title="{{_ 'add-card-to-top-of-list'}}")
             a.fa.fa-navicon.js-open-list-menu(title="{{_ 'listActionPopup-title'}}")
           if currentUser.isBoardAdmin
-            if isShowDesktopDragHandles
+            if isTouchScreenOrShowDesktopDragHandles
               a.list-header-handle.handle.fa.fa-arrows.js-list-handle
 
 template(name="editListTitleForm")
@@ -55,6 +55,18 @@ template(name="editListTitleForm")
       a.fa.fa-times-thin.js-close-inlined-form
 
 template(name="listActionPopup")
+  ul.pop-over-list
+    li
+      a.js-add-card.list-header-plus-bottom
+        i.fa.fa-plus
+        i.fa.fa-arrow-down
+        | {{_ 'add-card-to-bottom-of-list'}}
+  hr
+  ul.pop-over-list
+    li
+      a.js-set-list-width
+        i.fa.fa-arrows-h
+        |  {{_ 'set-list-width'}}
   ul.pop-over-list
     li
       a.js-toggle-watch-list
@@ -72,7 +84,7 @@ template(name="listActionPopup")
             i.fa.fa-paint-brush
             | {{_ 'set-color-list'}}
     ul.pop-over-list
-      if cards.count
+      if cards.length
         li
           a.js-select-cards
             i.fa.fa-check-square
@@ -147,6 +159,19 @@ template(name="wipLimitErrorPopup")
   .wip-limit-invalid
     p {{_ 'wipLimitErrorPopup-dialog-pt1'}}
     p {{_ 'wipLimitErrorPopup-dialog-pt2'}}
+    button.full.js-back-view(type="submit") {{_ 'cancel'}}
+
+template(name="setListWidthPopup")
+  #js-list-width-edit
+    label {{_ 'set-list-width-value'}}
+      p
+        input.list-width-value(type="number" value="{{ listWidthValue }}" min="100")
+        input.list-width-apply(type="submit" value="{{_ 'apply'}}")
+        input.list-width-error
+
+template(name="listWidthErrorPopup")
+  .list-width-invalid
+    p {{_ 'list-width-error-message'}} '&gt;=100'
     button.full.js-back-view(type="submit") {{_ 'cancel'}}
 
 template(name="setListColorPopup")

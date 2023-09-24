@@ -1,3 +1,5 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
 //var nodemailer = require('nodemailer');
 
 // buffer each user's email text in a queue, then flush them in single email
@@ -29,7 +31,7 @@ Meteor.startup(() => {
     // so we pass userId with closure
     const userId = user._id;
     Meteor.setTimeout(() => {
-      const user = Users.findOne(userId);
+      const user = ReactiveCache.getUser(userId);
 
       // for each user, in the timed period, only the first call will get the cached content,
       // other calls will get nothing

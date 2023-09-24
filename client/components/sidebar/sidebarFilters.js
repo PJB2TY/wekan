@@ -1,3 +1,5 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 const subManager = new SubsManager();
 
 BlazeComponent.extendComponent({
@@ -6,7 +8,12 @@ BlazeComponent.extendComponent({
       {
         'submit .js-list-filter'(evt) {
           evt.preventDefault();
-          Filter.title.set(this.find('.js-list-filter input').value.trim());
+          Filter.lists.set(this.find('.js-list-filter input').value.trim());
+        },
+        'change .js-field-card-filter'(evt) {
+          evt.preventDefault();
+          Filter.title.set(this.find('.js-field-card-filter').value.trim());
+          Filter.resetExceptions();
         },
         'click .js-toggle-label-filter'(evt) {
           evt.preventDefault();
@@ -48,6 +55,11 @@ BlazeComponent.extendComponent({
           Filter.dueAt.thisWeek();
           Filter.resetExceptions();
         },
+        'click .js-toggle-due-next-week-filter'(evt) {
+          evt.preventDefault();
+          Filter.dueAt.nextWeek();
+          Filter.resetExceptions();
+        },
         'click .js-toggle-archive-filter'(evt) {
           evt.preventDefault();
           Filter.archive.toggle(this.currentData()._id);
@@ -83,7 +95,7 @@ BlazeComponent.extendComponent({
         },
         'click .js-filter-to-selection'(evt) {
           evt.preventDefault();
-          const selectedCards = Cards.find(Filter.mongoSelector()).map(c => {
+          const selectedCards = ReactiveCache.getCards(Filter.mongoSelector()).map(c => {
             return c._id;
           });
           MultiSelection.add(selectedCards);
@@ -94,14 +106,14 @@ BlazeComponent.extendComponent({
 }).register('filterSidebar');
 
 function mutateSelectedCards(mutationName, ...args) {
-  Cards.find(MultiSelection.getMongoSelector()).forEach(card => {
+  ReactiveCache.getCards(MultiSelection.getMongoSelector(), {sort: ['sort']}).forEach(card => {
     card[mutationName](...args);
   });
 }
 
 BlazeComponent.extendComponent({
   mapSelection(kind, _id) {
-    return Cards.find(MultiSelection.getMongoSelector()).map(card => {
+    return ReactiveCache.getCards(MultiSelection.getMongoSelector(), {sort: ['sort']}).map(card => {
       const methodName = kind === 'label' ? 'hasLabel' : 'isAssigned';
       return card[methodName](_id);
     });
@@ -161,32 +173,32 @@ BlazeComponent.extendComponent({
 
 Template.multiselectionSidebar.helpers({
   isBoardAdmin() {
-    return Meteor.user().isBoardAdmin();
+    return ReactiveCache.getCurrentUser().isBoardAdmin();
   },
   isCommentOnly() {
-    return Meteor.user().isCommentOnly();
+    return ReactiveCache.getCurrentUser().isCommentOnly();
   },
 });
 
 Template.disambiguateMultiLabelPopup.events({
   'click .js-remove-label'() {
     mutateSelectedCards('removeLabel', this._id);
-    Popup.close();
+    Popup.back();
   },
   'click .js-add-label'() {
     mutateSelectedCards('addLabel', this._id);
-    Popup.close();
+    Popup.back();
   },
 });
 
 Template.disambiguateMultiMemberPopup.events({
   'click .js-unassign-member'() {
     mutateSelectedCards('assignMember', this._id);
-    Popup.close();
+    Popup.back();
   },
   'click .js-assign-member'() {
     mutateSelectedCards('unassignMember', this._id);
-    Popup.close();
+    Popup.back();
   },
 });
 

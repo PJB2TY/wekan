@@ -1,6 +1,11 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
 import { AttachmentStorage } from '/models/attachments';
 import { CardSearchPagedComponent } from '/client/lib/cardSearch';
 import SessionData from '/models/usersessiondata';
+import { QueryParams } from '/config/query-classes';
+import { OPERATOR_LIMIT } from '/config/search-const';
+const filesize = require('filesize');
 
 BlazeComponent.extendComponent({
   subscription: null,
@@ -8,10 +13,14 @@ BlazeComponent.extendComponent({
   showBrokenCardsReport: new ReactiveVar(false),
   showOrphanedFilesReport: new ReactiveVar(false),
   showRulesReport: new ReactiveVar(false),
+  showCardsReport: new ReactiveVar(false),
+  showBoardsReport: new ReactiveVar(false),
+  sessionId: null,
 
   onCreated() {
     this.error = new ReactiveVar('');
     this.loading = new ReactiveVar(false);
+    this.sessionId = SessionData.getSessionId();
   },
 
   events() {
@@ -19,8 +28,9 @@ BlazeComponent.extendComponent({
       {
         'click a.js-report-broken': this.switchMenu,
         'click a.js-report-files': this.switchMenu,
-        'click a.js-report-orphaned-files': this.switchMenu,
         'click a.js-report-rules': this.switchMenu,
+        'click a.js-report-cards': this.switchMenu,
+        'click a.js-report-boards': this.switchMenu,
       },
     ];
   },
@@ -32,6 +42,9 @@ BlazeComponent.extendComponent({
       this.showFilesReport.set(false);
       this.showBrokenCardsReport.set(false);
       this.showOrphanedFilesReport.set(false);
+      this.showRulesReport.set(false)
+      this.showBoardsReport.set(false);
+      this.showCardsReport.set(false);
       if (this.subscription) {
         this.subscription.stop();
       }
@@ -54,81 +67,81 @@ BlazeComponent.extendComponent({
         this.subscription = Meteor.subscribe('attachmentsList', () => {
           this.loading.set(false);
         });
-      } else if ('report-orphaned-files' === targetID) {
-        this.showOrphanedFilesReport.set(true);
-        this.subscription = Meteor.subscribe('orphanedAttachments', () => {
-          this.loading.set(false);
-        });
       } else if ('report-rules' === targetID) {
         this.subscription = Meteor.subscribe('rulesReport', () => {
           this.showRulesReport.set(true);
           this.loading.set(false);
         });
+      } else if ('report-boards' === targetID) {
+        this.subscription = Meteor.subscribe('boardsReport', () => {
+          this.showBoardsReport.set(true);
+          this.loading.set(false);
+        });
+      } else if ('report-cards' === targetID) {
+        const qp = new QueryParams();
+        qp.addPredicate(OPERATOR_LIMIT, 300);
+        this.subscription = Meteor.subscribe(
+          'globalSearch',
+          this.sessionId,
+          qp.getParams(),
+          qp.text,
+          () => {
+            this.showCardsReport.set(true);
+            this.loading.set(false);
+          },
+        );
       }
     }
   },
 }).register('adminReports');
 
-Template.filesReport.helpers({
-  attachmentFiles() {
+class AdminReport extends BlazeComponent {
+  collection;
+
+  results() {
     // eslint-disable-next-line no-console
-    // console.log('attachments:', AttachmentStorage.find());
-    // console.log('attachments.count:', AttachmentStorage.find().count());
-    return AttachmentStorage.find();
-  },
+    return this.collection.find();
+  }
 
-  rulesReport() {
-    const rules = [];
-
-    Rules.find().forEach(rule => {
-      rules.push({
-        _id: rule._id,
-        title: rule.title,
-        boardId: rule.boardId,
-        boardTitle: rule.board().title,
-        action: rule.action().fetch(),
-        trigger: rule.trigger().fetch(),
-      });
-    });
-
-    return rules;
-  },
+  yesOrNo(value) {
+    if (value) {
+      return TAPi18n.__('yes');
+    } else {
+      return TAPi18n.__('no');
+    }
+  }
 
   resultsCount() {
-    return AttachmentStorage.find().count();
-  },
+    return this.collection.find().count();
+  }
 
   fileSize(size) {
-    return Math.round(size / 1024);
-  },
+    let ret = "";
+    if (_.isNumber(size)) {
+      ret = filesize(size);
+    }
+    return ret;
+  }
 
-  usageCount(key) {
-    return Attachments.find({ 'copies.attachments.key': key }).count();
-  },
-});
+  abbreviate(text) {
+    if (text?.length > 30) {
+      return `${text.substr(0, 29)}...`;
+    }
+    return text;
+  }
+}
 
-Template.orphanedFilesReport.helpers({
-  attachmentFiles() {
-    // eslint-disable-next-line no-console
-    // console.log('attachments:', AttachmentStorage.find());
-    // console.log('attachments.count:', AttachmentStorage.find().count());
-    return AttachmentStorage.find();
-  },
+(class extends AdminReport {
+  collection = Attachments;
+}.register('filesReport'));
 
-  resultsCount() {
-    return AttachmentStorage.find().count();
-  },
+(class extends AdminReport {
+  collection = Rules;
 
-  fileSize(size) {
-    return Math.round(size / 1024);
-  },
-});
-
-Template.rulesReport.helpers({
-  rows() {
+  results() {
     const rules = [];
 
-    Rules.find().forEach(rule => {
+    ReactiveCache.getRules().forEach(rule => {
       rules.push({
         _id: rule._id,
         title: rule.title,
@@ -139,14 +152,39 @@ Template.rulesReport.helpers({
       });
     });
 
+    // eslint-disable-next-line no-console
     console.log('rows:', rules);
     return rules;
-  },
+  }
+}.register('rulesReport'));
 
-  resultsCount() {
-    return Rules.find().count();
-  },
-});
+(class extends AdminReport {
+  collection = Boards;
+
+  userNames(members) {
+    const ret = (members || [])
+      .map(_member => {
+        const _ret = ReactiveCache.getUser(_member.userId)?.username || _member.userId;
+        return _ret;
+      })
+      .join(", ");
+    return ret;
+  }
+}.register('boardsReport'));
+
+(class extends AdminReport {
+  collection = Cards;
+
+  userNames(userIds) {
+    const ret = (userIds || [])
+      .map(_userId => {
+        const _ret = ReactiveCache.getUser(_userId)?.username;
+        return _ret;
+      })
+      .join(", ");
+    return ret
+  }
+}.register('cardsReport'));
 
 class BrokenCardsComponent extends CardSearchPagedComponent {
   onCreated() {

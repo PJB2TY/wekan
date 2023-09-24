@@ -1,3 +1,6 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
+
 if (Meteor.isServer) {
   const postCatchError = Meteor.wrapAsync((url, options, resolve) => {
     HTTP.post(url, options, (err, res) => {
@@ -63,6 +66,8 @@ if (Meteor.isServer) {
     'swimlaneId',
     'customField',
     'customFieldValue',
+    'labelId',
+    'label',
     'attachmentId',
   ];
   const responseFunc = data => {
@@ -72,13 +77,13 @@ if (Meteor.isServer) {
     const newComment = data.comment;
     if (paramCardId && paramBoardId && newComment) {
       // only process data with the cardid, boardid and comment text, TODO can expand other functions here to react on returned data
-      const comment = CardComments.findOne({
+      const comment = ReactiveCache.getCardComment({
         _id: paramCommentId,
         cardId: paramCardId,
         boardId: paramBoardId,
       });
-      const board = Boards.findOne(paramBoardId);
-      const card = Cards.findOne(paramCardId);
+      const board = ReactiveCache.getBoard(paramBoardId);
+      const card = ReactiveCache.getCard(paramCardId);
       if (board && card) {
         if (comment) {
           Lock.set(comment._id, newComment);
@@ -104,7 +109,7 @@ if (Meteor.isServer) {
   };
   Meteor.methods({
     outgoingWebhooks(integration, description, params) {
-      if (Meteor.user()) {
+      if (ReactiveCache.getCurrentUser()) {
         check(integration, Object);
         check(description, String);
         check(params, Object);
@@ -123,6 +128,7 @@ if (Meteor.isServer) {
           'checklist',
           'swimlane',
           'oldSwimlane',
+          'labelId',
           'label',
           'attachment',
           'attachmentId',
@@ -131,12 +137,17 @@ if (Meteor.isServer) {
         });
 
         const userId = params.userId ? params.userId : integrations[0].userId;
-        const user = Users.findOne(userId);
-        const text = `${params.user} ${TAPi18n.__(
+        const user = ReactiveCache.getUser(userId);
+        const descriptionText = TAPi18n.__(
           description,
           quoteParams,
           user.getLanguage(),
-        )}\n${params.url}`;
+        );
+
+        // If you don't want a hook, set the webhook description to "-".
+        if (descriptionText === "-") return;
+
+        const text = `${params.user} ${descriptionText}\n${params.url}`;
 
         if (text.length === 0) return;
 
@@ -160,7 +171,7 @@ if (Meteor.isServer) {
           data: is2way ? { description, ...clonedParams } : value,
         };
 
-        if (!Integrations.findOne({ url: integration.url })) return;
+        if (!ReactiveCache.getIntegration({ url: integration.url })) return;
 
         const url = integration.url;
 

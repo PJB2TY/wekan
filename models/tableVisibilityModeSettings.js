@@ -1,3 +1,5 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 TableVisibilityModeSettings = new Mongo.Collection('tableVisibilityModeSettings');
 
 TableVisibilityModeSettings.attachSchema(
@@ -44,14 +46,14 @@ TableVisibilityModeSettings.attachSchema(
 
 TableVisibilityModeSettings.allow({
   update(userId) {
-    const user = Users.findOne(userId);
+    const user = ReactiveCache.getUser(userId);
     return user && user.isAdmin;
   },
 });
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    TableVisibilityModeSettings._collection._ensureIndex({ modifiedAt: -1 });
+    TableVisibilityModeSettings._collection.createIndex({ modifiedAt: -1 });
     TableVisibilityModeSettings.upsert(
       { _id: 'tableVisibilityMode-allowPrivateOnly' },
       {

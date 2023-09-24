@@ -1,3 +1,4 @@
+import { ReactiveCache } from '/imports/reactiveCache';
 import { ALLOWED_COLORS } from '/config/const';
 
 Swimlanes = new Mongo.Collection('swimlanes');
@@ -111,13 +112,13 @@ Swimlanes.attachSchema(
 
 Swimlanes.allow({
   insert(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   update(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   remove(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   fetch: ['boardId'],
 });
@@ -139,7 +140,7 @@ Swimlanes.helpers({
     }
 
     // Copy all lists in swimlane
-    Lists.find(query).forEach(list => {
+    ReactiveCache.getLists(query).forEach(list => {
       list.type = 'list';
       list.swimlaneId = oldId;
       list.boardId = boardId;
@@ -149,7 +150,7 @@ Swimlanes.helpers({
 
   move(toBoardId) {
     this.lists().forEach(list => {
-      const toList = Lists.findOne({
+      const toList = ReactiveCache.getList({
         boardId: toBoardId,
         title: list.title,
         archived: false,
@@ -168,7 +169,7 @@ Swimlanes.helpers({
         });
       }
 
-      Cards.find({
+      ReactiveCache.getCards({
         listId: list._id,
         swimlaneId: this._id,
       }).forEach(card => {
@@ -187,26 +188,22 @@ Swimlanes.helpers({
   },
 
   cards() {
-    return Cards.find(
+    const ret = ReactiveCache.getCards(
       Filter.mongoSelector({
         swimlaneId: this._id,
         archived: false,
       }),
       { sort: ['sort'] },
     );
+    return ret;
   },
 
   lists() {
-    //currentUser = Meteor.user();
-    //if (currentUser) {
-    //  enabled = Meteor.user().hasSortBy();
-    //}
-    //return enabled ? this.newestLists() : this.draggableLists();
     return this.draggableLists();
   },
   newestLists() {
     // sorted lists from newest to the oldest, by its creation date or its cards' last modification date
-    return Lists.find(
+    return ReactiveCache.getLists(
       {
         boardId: this.boardId,
         swimlaneId: { $in: [this._id, ''] },
@@ -216,26 +213,27 @@ Swimlanes.helpers({
     );
   },
   draggableLists() {
-    return Lists.find(
+    return ReactiveCache.getLists(
       {
         boardId: this.boardId,
         swimlaneId: { $in: [this._id, ''] },
-        archived: false,
+        //archived: false,
       },
       { sort: ['sort'] },
     );
   },
 
   myLists() {
-    return Lists.find({ swimlaneId: this._id });
+    return ReactiveCache.getLists({ swimlaneId: this._id });
   },
 
   allCards() {
-    return Cards.find({ swimlaneId: this._id });
+    const ret = ReactiveCache.getCards({ swimlaneId: this._id });
+    return ret;
   },
 
   board() {
-    return Boards.findOne(this.boardId);
+    return ReactiveCache.getBoard(this.boardId);
   },
 
   colorClass() {
@@ -252,17 +250,17 @@ Swimlanes.helpers({
   },
 
   isListTemplatesSwimlane() {
-    const user = Users.findOne(Meteor.userId());
+    const user = ReactiveCache.getCurrentUser();
     return (user.profile || {}).listTemplatesSwimlaneId === this._id;
   },
 
   isCardTemplatesSwimlane() {
-    const user = Users.findOne(Meteor.userId());
+    const user = ReactiveCache.getCurrentUser();
     return (user.profile || {}).cardTemplatesSwimlaneId === this._id;
   },
 
   isBoardTemplatesSwimlane() {
-    const user = Users.findOne(Meteor.userId());
+    const user = ReactiveCache.getCurrentUser();
     return (user.profile || {}).boardTemplatesSwimlaneId === this._id;
   },
 
@@ -306,8 +304,19 @@ Swimlanes.mutations({
   },
 });
 
+Swimlanes.userArchivedSwimlanes = userId => {
+  return ReactiveCache.getSwimlanes({
+    boardId: { $in: Boards.userBoardIds(userId, null) },
+    archived: true,
+  })
+};
+
+Swimlanes.userArchivedSwimlaneIds = () => {
+  return Swimlanes.userArchivedSwimlanes().map(swim => { return swim._id; });
+};
+
 Swimlanes.archivedSwimlanes = () => {
-  return Swimlanes.find({ archived: true });
+  return ReactiveCache.getSwimlanes({ archived: true });
 };
 
 Swimlanes.archivedSwimlaneIds = () => {
@@ -320,8 +329,8 @@ Swimlanes.hookOptions.after.update = { fetchPrevious: false };
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    Swimlanes._collection._ensureIndex({ modifiedAt: -1 });
-    Swimlanes._collection._ensureIndex({ boardId: 1 });
+    Swimlanes._collection.createIndex({ modifiedAt: -1 });
+    Swimlanes._collection.createIndex({ boardId: 1 });
   });
 
   Swimlanes.after.insert((userId, doc) => {
@@ -335,7 +344,7 @@ if (Meteor.isServer) {
   });
 
   Swimlanes.before.remove(function(userId, doc) {
-    const lists = Lists.find(
+    const lists = ReactiveCache.getLists(
       {
         boardId: doc.boardId,
         swimlaneId: { $in: [doc._id, ''] },
@@ -344,7 +353,7 @@ if (Meteor.isServer) {
       { sort: ['sort'] },
     );
 
-    if (lists.count() < 2) {
+    if (lists.length < 2) {
       lists.forEach(list => {
         list.remove();
       });
@@ -388,12 +397,12 @@ if (Meteor.isServer) {
    */
   JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
 
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Swimlanes.find({ boardId: paramBoardId, archived: false }).map(
+        data: ReactiveCache.getSwimlanes({ boardId: paramBoardId, archived: false }).map(
           function(doc) {
             return {
               _id: doc._id,
@@ -424,12 +433,13 @@ if (Meteor.isServer) {
     res,
   ) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramSwimlaneId = req.params.swimlaneId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Swimlanes.findOne({
+        data: ReactiveCache.getSwimlane({
           _id: paramSwimlaneId,
           boardId: paramBoardId,
           archived: false,
@@ -454,18 +464,60 @@ if (Meteor.isServer) {
    */
   JsonRoutes.add('POST', '/api/boards/:boardId/swimlanes', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
-      const board = Boards.findOne(paramBoardId);
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+
+      const board = ReactiveCache.getBoard(paramBoardId);
       const id = Swimlanes.insert({
         title: req.body.title,
         boardId: paramBoardId,
-        sort: board.swimlanes().count(),
+        sort: board.swimlanes().length,
       });
       JsonRoutes.sendResult(res, {
         code: 200,
         data: {
           _id: id,
+        },
+      });
+    } catch (error) {
+      JsonRoutes.sendResult(res, {
+        code: 200,
+        data: error,
+      });
+    }
+  });
+
+  /**
+   * @operation edit_swimlane
+   *
+   * @summary Edit the title of a swimlane
+   *
+   * @param {string} boardId the ID of the board
+   * @param {string} swimlaneId the ID of the swimlane to edit
+   * @param {string} title the new title of the swimlane
+   * @return_type {_id: string}
+   */
+  JsonRoutes.add('PUT', '/api/boards/:boardId/swimlanes/:swimlaneId', function(req, res) {
+    try {
+      const paramBoardId = req.params.boardId;
+      const paramSwimlaneId = req.params.swimlaneId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+      const board = ReactiveCache.getBoard(paramBoardId);
+      const swimlane = ReactiveCache.getSwimlane({
+        _id: paramSwimlaneId,
+        boardId: paramBoardId,
+      });
+      if (!swimlane) {
+        throw new Meteor.Error('not-found', 'Swimlane not found');
+      }
+      Swimlanes.direct.update(
+        { _id: paramSwimlaneId },
+        { $set: { title: req.body.title } }
+      );
+      JsonRoutes.sendResult(res, {
+        code: 200,
+        data: {
+          _id: paramSwimlaneId,
         },
       });
     } catch (error) {
@@ -492,9 +544,9 @@ if (Meteor.isServer) {
     '/api/boards/:boardId/swimlanes/:swimlaneId',
     function(req, res) {
       try {
-        Authentication.checkUserId(req.userId);
         const paramBoardId = req.params.boardId;
         const paramSwimlaneId = req.params.swimlaneId;
+        Authentication.checkBoardAccess(req.userId, paramBoardId);
         Swimlanes.remove({ _id: paramSwimlaneId, boardId: paramBoardId });
         JsonRoutes.sendResult(res, {
           code: 200,

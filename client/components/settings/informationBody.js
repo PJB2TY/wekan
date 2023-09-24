@@ -1,3 +1,6 @@
+import { TAPi18n } from '/imports/i18n';
+const filesize = require('filesize');
+
 BlazeComponent.extendComponent({
   onCreated() {
     this.info = new ReactiveVar({});
@@ -37,12 +40,11 @@ BlazeComponent.extendComponent({
     return parseFloat(number).toFixed(2);
   },
 
-  bytesToSize(bytes) {
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    if (bytes === 0) {
-      return '0 Byte';
+  fileSize(size) {
+    let ret = "";
+    if (_.isNumber(size)) {
+      ret = filesize(size);
     }
-    const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)), 10);
-    return `${Math.round(bytes / Math.pow(1024, i), 2)}  ${sizes[i]}`;
+    return ret;
   },
 }).register('statistics');

@@ -1,4 +1,7 @@
-archivedRequested = false;
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
+
+//archivedRequested = false;
 const subManager = new SubsManager();
 
 BlazeComponent.extendComponent({
@@ -13,7 +16,7 @@ BlazeComponent.extendComponent({
       const currentBoardId = Session.get('currentBoard');
       if (!currentBoardId) return;
       const handle = subManager.subscribe('board', currentBoardId, true);
-      archivedRequested = true;
+      //archivedRequested = true;
       Tracker.nonreactive(() => {
         Tracker.autorun(() => {
           this.isArchiveReady.set(handle.ready());
@@ -31,7 +34,7 @@ BlazeComponent.extendComponent({
   },
 
   archivedCards() {
-    return Cards.find(
+    const ret = ReactiveCache.getCards(
       {
         archived: true,
         boardId: Session.get('currentBoard'),
@@ -40,10 +43,11 @@ BlazeComponent.extendComponent({
         sort: { archivedAt: -1, modifiedAt: -1 },
       },
     );
+    return ret;
   },
 
   archivedLists() {
-    return Lists.find(
+    return ReactiveCache.getLists(
       {
         archived: true,
         boardId: Session.get('currentBoard'),
@@ -55,7 +59,7 @@ BlazeComponent.extendComponent({
   },
 
   archivedSwimlanes() {
-    return Swimlanes.find(
+    return ReactiveCache.getSwimlanes(
       {
         archived: true,
         boardId: Session.get('currentBoard'),
@@ -94,13 +98,13 @@ BlazeComponent.extendComponent({
         'click .js-delete-card': Popup.afterConfirm('cardDelete', function() {
           const cardId = this._id;
           Cards.remove(cardId);
-          Popup.close();
+          Popup.back();
         }),
         'click .js-delete-all-cards': Popup.afterConfirm('cardDelete', () => {
           this.archivedCards().forEach(card => {
             Cards.remove(card._id);
           });
-          Popup.close();
+          Popup.back();
         }),
 
         'click .js-restore-list'() {
@@ -115,13 +119,13 @@ BlazeComponent.extendComponent({
 
         'click .js-delete-list': Popup.afterConfirm('listDelete', function() {
           this.remove();
-          Popup.close();
+          Popup.back();
         }),
         'click .js-delete-all-lists': Popup.afterConfirm('listDelete', () => {
           this.archivedLists().forEach(list => {
             list.remove();
           });
-          Popup.close();
+          Popup.back();
         }),
 
         'click .js-restore-swimlane'() {
@@ -138,7 +142,7 @@ BlazeComponent.extendComponent({
           'swimlaneDelete',
           function() {
             this.remove();
-            Popup.close();
+            Popup.back();
           },
         ),
         'click .js-delete-all-swimlanes': Popup.afterConfirm(
@@ -147,7 +151,7 @@ BlazeComponent.extendComponent({
             this.archivedSwimlanes().forEach(swimlane => {
               swimlane.remove();
             });
-            Popup.close();
+            Popup.back();
           },
         ),
       },
@@ -157,10 +161,10 @@ BlazeComponent.extendComponent({
 
 Template.archivesSidebar.helpers({
   isBoardAdmin() {
-    return Meteor.user().isBoardAdmin();
+    return ReactiveCache.getCurrentUser().isBoardAdmin();
   },
   isWorker() {
-    const currentBoard = Boards.findOne(Session.get('currentBoard'));
+    const currentBoard = Utils.getCurrentBoard();
     return (
       !currentBoard.hasAdmin(this.userId) && currentBoard.hasWorker(this.userId)
     );

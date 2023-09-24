@@ -2,24 +2,26 @@ template(name="swimlane")
   .swimlane
     +swimlaneHeader
   unless collapseSwimlane
-    .swimlane.js-lists.js-swimlane(id="swimlane-{{_id}}")
+    .swimlane.js-lists.js-swimlane(id="swimlane-{{_id}}"
+                                   style="height:{{swimlaneHeight}};")
       if isMiniScreen
         if currentListIsInThisSwimlane _id
           +list(currentList)
         unless currentList
-          each lists
-            +miniList(this)
           if currentUser.isBoardMember
             unless currentUser.isCommentOnly
               +addListForm
+          each lists
+            +miniList(this)
       else
-        each lists
-          +list(this)
-          if currentCardIsInThisList _id ../_id
-            +cardDetails(currentCard)
         if currentUser.isBoardMember
           unless currentUser.isCommentOnly
             +addListForm
+        each lists
+          if visible this
+            +list(this)
+          if currentCardIsInThisList _id ../_id
+            +cardDetails(currentCard)
 
 template(name="listsGroup")
   .swimlane.list-group.js-lists
@@ -27,20 +29,20 @@ template(name="listsGroup")
       if currentList
         +list(currentList)
       else
-        each lists
-          +miniList(this)
         if currentUser.isBoardMember
           unless currentUser.isCommentOnly
             +addListForm
+        each lists
+          +miniList(this)
     else
+      if currentUser.isBoardMember
+        unless currentUser.isCommentOnly
+          +addListForm
       each lists
         if visible this
           +list(this)
         if currentCardIsInThisList _id null
           +cardDetails(currentCard)
-      if currentUser.isBoardMember
-        unless currentUser.isCommentOnly
-          +addListForm
 
 template(name="addListForm")
   unless currentUser.isWorker
@@ -50,8 +52,14 @@ template(name="addListForm")
           +inlinedForm(autoclose=false)
             input.list-name-input.full-line(type="text" placeholder="{{_ 'add-list'}}"
               autocomplete="off" autofocus)
+            if currentBoard.getLastList
+              | {{_ 'add-after-list'}}
+              select.list-position-input.full-line
+                each currentBoard.lists
+                  option(value="{{_id}}" selected=currentBoard.getLastList.title) {{title}}
             .edit-controls.clearfix
               button.primary.confirm(type="submit") {{_ 'save'}}
+              .fa.fa-times-thin.js-close-inlined-form
               unless currentBoard.isTemplatesBoard
                 unless currentBoard.isTemplateBoard
                   span.quiet

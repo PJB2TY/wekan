@@ -1,3 +1,5 @@
+import { TAPi18n } from '/imports/i18n';
+
 let previousPath;
 FlowRouter.triggers.exit([
   ({ path }) => {
@@ -12,7 +14,8 @@ FlowRouter.route('/', {
     Session.set('currentBoard', null);
     Session.set('currentList', null);
     Session.set('currentCard', null);
-    Session.set('popupCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
 
     Filter.reset();
     Session.set('sortBy', '');
@@ -35,7 +38,8 @@ FlowRouter.route('/public', {
     Session.set('currentBoard', null);
     Session.set('currentList', null);
     Session.set('currentCard', null);
-    Session.set('popupCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
 
     Filter.reset();
     Session.set('sortBy', '');
@@ -58,7 +62,8 @@ FlowRouter.route('/b/:id/:slug', {
     const previousBoard = Session.get('currentBoard');
     Session.set('currentBoard', currentBoard);
     Session.set('currentCard', null);
-    Session.set('popupCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
 
     // If we close a card, we'll execute again this route action but we don't
     // want to excape every current actions (filters, etc.)
@@ -87,7 +92,8 @@ FlowRouter.route('/b/:boardId/:slug/:cardId', {
 
     Session.set('currentBoard', params.boardId);
     Session.set('currentCard', params.cardId);
-    Session.set('popupCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
 
     Utils.manageCustomUI();
     Utils.manageMatomo();
@@ -117,6 +123,30 @@ FlowRouter.route('/shortcuts', {
         content: shortcutsTemplate,
       });
     }
+  },
+});
+
+FlowRouter.route('/b/templates', {
+  name: 'template-container',
+  triggersEnter: [AccountsTemplates.ensureSignedIn],
+  action() {
+    Session.set('currentBoard', null);
+    Session.set('currentList', null);
+    Session.set('currentCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
+
+    Filter.reset();
+    Session.set('sortBy', '');
+    EscapeActions.executeAll();
+
+    Utils.manageCustomUI();
+    Utils.manageMatomo();
+
+    BlazeLayout.render('defaultLayout', {
+      headerBar: 'boardListHeaderBar',
+      content: 'boardList',
+    });
   },
 });
 
@@ -216,7 +246,8 @@ FlowRouter.route('/import/:source', {
     Session.set('currentBoard', null);
     Session.set('currentList', null);
     Session.set('currentCard', null);
-    Session.set('popupCard', null);
+    Session.set('popupCardId', null);
+    Session.set('popupCardBoardId', null);
     Session.set('importSource', params.source);
 
     Filter.reset();
@@ -237,7 +268,8 @@ FlowRouter.route('/setting', {
       Session.set('currentBoard', null);
       Session.set('currentList', null);
       Session.set('currentCard', null);
-      Session.set('popupCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
 
       Filter.reset();
       Session.set('sortBy', '');
@@ -261,7 +293,8 @@ FlowRouter.route('/information', {
       Session.set('currentBoard', null);
       Session.set('currentList', null);
       Session.set('currentCard', null);
-      Session.set('popupCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
 
       Filter.reset();
       Session.set('sortBy', '');
@@ -284,7 +317,8 @@ FlowRouter.route('/people', {
       Session.set('currentBoard', null);
       Session.set('currentList', null);
       Session.set('currentCard', null);
-      Session.set('popupCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
 
       Filter.reset();
       Session.set('sortBy', '');
@@ -307,7 +341,8 @@ FlowRouter.route('/admin-reports', {
       Session.set('currentBoard', null);
       Session.set('currentList', null);
       Session.set('currentCard', null);
-      Session.set('popupCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
 
       Filter.reset();
       Session.set('sortBy', '');
@@ -318,6 +353,54 @@ FlowRouter.route('/admin-reports', {
     BlazeLayout.render('defaultLayout', {
       headerBar: 'settingHeaderBar',
       content: 'adminReports',
+    });
+  },
+});
+
+FlowRouter.route('/attachments', {
+  name: 'attachments',
+  triggersEnter: [
+    AccountsTemplates.ensureSignedIn,
+    () => {
+      Session.set('currentBoard', null);
+      Session.set('currentList', null);
+      Session.set('currentCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
+
+      Filter.reset();
+      Session.set('sortBy', '');
+      EscapeActions.executeAll();
+    },
+  ],
+  action() {
+    BlazeLayout.render('defaultLayout', {
+      headerBar: 'settingHeaderBar',
+      content: 'attachments',
+    });
+  },
+});
+
+FlowRouter.route('/translation', {
+  name: 'translation',
+  triggersEnter: [
+    AccountsTemplates.ensureSignedIn,
+    () => {
+      Session.set('currentBoard', null);
+      Session.set('currentList', null);
+      Session.set('currentCard', null);
+      Session.set('popupCardId', null);
+      Session.set('popupCardBoardId', null);
+
+      Filter.reset();
+      Session.set('sortBy', '');
+      EscapeActions.executeAll();
+    },
+  ],
+  action() {
+    BlazeLayout.render('defaultLayout', {
+      headerBar: 'settingHeaderBar',
+      content: 'translation',
     });
   },
 });
@@ -362,7 +445,7 @@ _.each(redirections, (newPath, oldPath) => {
 //Meteor.isClient && Meteor.startup(() => {
 //  Tracker.autorun(() => {
 
-//    const currentBoard = Boards.findOne(Session.get('currentBoard'));
+//    const currentBoard = Utils.getCurrentBoard();
 //    const titleStack = [appTitle];
 //    if (currentBoard) {
 //      titleStack.push(currentBoard.title);

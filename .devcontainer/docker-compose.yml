@@ -3,7 +3,7 @@ version: '3.7'
 services:
 
   wekandb-dev:
-    image: mongo:4.4
+    image: mongo:6
     container_name: wekan-dev-db
     restart: unless-stopped
     command: mongod --oplogSize 128
@@ -13,7 +13,6 @@ services:
       - 27017
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
       - ./volumes/wekan-db:/data/db
       - ./volumes/wekan-db-dump:/dump
 
@@ -34,23 +33,18 @@ services:
       - WITH_API=true
       - RICHER_CARD_COMMENT_EDITOR=true
       - BROWSER_POLICY_ENABLED=true
+      - WRITABLE_PATH=/data
     depends_on:
       - wekandb-dev
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
+      - ./volumes/data:/data
       - ../client:/home/wekan/app/client
       - ../models:/home/wekan/app/models
       - ../config:/home/wekan/app/config
-      - ../i18n:/home/wekan/app/i18n
+      - ../imports:/home/wekan/app/imports
       - ../server:/home/wekan/app/server
       - ../public:/home/wekan/app/public
-
-volumes:
-  wekan-dev-db:
-    driver: local
-  wekan-dev-db-dump:
-    driver: local
 
 networks:
   wekan-dev-tier:

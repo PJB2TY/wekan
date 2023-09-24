@@ -1,10 +1,11 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { Blaze } from 'meteor/blaze';
+import { Session } from 'meteor/session';
+import moment from 'moment/min/moment-with-locales';
+
 Blaze.registerHelper('currentBoard', () => {
-  const boardId = Session.get('currentBoard');
-  if (boardId) {
-    return Boards.findOne(boardId);
-  } else {
-    return null;
-  }
+  const ret = Utils.getCurrentBoard();
+  return ret;
 });
 
 Blaze.registerHelper('currentCard', () => {
@@ -13,24 +14,46 @@ Blaze.registerHelper('currentCard', () => {
 });
 
 Blaze.registerHelper('currentList', () => {
-  const listId = Session.get('currentList');
-  if (listId) {
-    return Lists.findOne(listId);
-  } else {
-    return null;
-  }
+  const ret = Utils.getCurrentList();
+  return ret;
 });
 
-Blaze.registerHelper('getUser', userId => Users.findOne(userId));
+Blaze.registerHelper('currentSetting', () => {
+  const ret = ReactiveCache.getCurrentSetting();
+  return ret;
+});
+
+Blaze.registerHelper('currentUser', () => {
+  const ret = ReactiveCache.getCurrentUser();
+  return ret;
+});
+
+Blaze.registerHelper('getUser', userId => ReactiveCache.getUser(userId));
 
 Blaze.registerHelper('concat', (...args) => args.slice(0, -1).join(''));
 
 Blaze.registerHelper('isMiniScreen', () => Utils.isMiniScreen());
 
+Blaze.registerHelper('isTouchScreen', () => Utils.isTouchScreen());
+
 Blaze.registerHelper('isShowDesktopDragHandles', () =>
   Utils.isShowDesktopDragHandles(),
 );
 
-Blaze.registerHelper('isMiniScreenOrShowDesktopDragHandles', () =>
-  Utils.isMiniScreenOrShowDesktopDragHandles(),
+Blaze.registerHelper('isTouchScreenOrShowDesktopDragHandles', () =>
+  Utils.isTouchScreenOrShowDesktopDragHandles(),
+);
+
+Blaze.registerHelper('moment', (...args) => {
+  args.pop(); // hash
+  const [date, format] = args;
+  return moment(date).format(format);
+});
+
+Blaze.registerHelper('canModifyCard', () =>
+  Utils.canModifyCard(),
+);
+
+Blaze.registerHelper('canModifyBoard', () =>
+  Utils.canModifyBoard(),
 );

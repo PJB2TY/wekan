@@ -1,16 +1,17 @@
+import { ReactiveCache } from '/imports/reactiveCache';
 import { Meteor } from 'meteor/meteor';
 
 Actions = new Mongo.Collection('actions');
 
 Actions.allow({
   insert(userId, doc) {
-    return allowIsBoardAdmin(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardAdmin(userId, ReactiveCache.getBoard(doc.boardId));
   },
   update(userId, doc) {
-    return allowIsBoardAdmin(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardAdmin(userId, ReactiveCache.getBoard(doc.boardId));
   },
   remove(userId, doc) {
-    return allowIsBoardAdmin(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardAdmin(userId, ReactiveCache.getBoard(doc.boardId));
   },
 });
 
@@ -32,7 +33,7 @@ Actions.helpers({
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    Actions._collection._ensureIndex({ modifiedAt: -1 });
+    Actions._collection.createIndex({ modifiedAt: -1 });
   });
 }
 

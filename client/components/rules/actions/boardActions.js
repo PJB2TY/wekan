@@ -1,20 +1,22 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 BlazeComponent.extendComponent({
   onCreated() {},
 
   boards() {
-    const boards = Boards.find(
+    const ret = ReactiveCache.getBoards(
       {
         archived: false,
         'members.userId': Meteor.userId(),
         _id: {
-          $ne: Meteor.user().getTemplatesBoardId(),
+          $ne: ReactiveCache.getCurrentUser().getTemplatesBoardId(),
         },
       },
       {
         sort: { sort: 1 /* boards default sorting */ },
       },
     );
-    return boards;
+    return ret;
   },
 
   events() {
@@ -177,6 +179,29 @@ BlazeComponent.extendComponent({
               boardId,
             });
           }
+        },
+        'click .js-link-card-action'(event) {
+          const ruleName = this.data().ruleName.get();
+          const trigger = this.data().triggerVar.get();
+          const swimlaneName = this.find('#swimlaneName-link').value || '*';
+          const listName = this.find('#listName-link').value || '*';
+          const boardId = Session.get('currentBoard');
+          const destBoardId = this.find('#board-id-link').value;
+          const desc = Utils.getTriggerActionDesc(event, this);
+          const triggerId = Triggers.insert(trigger);
+          const actionId = Actions.insert({
+            actionType: 'linkCard',
+            listName,
+            swimlaneName,
+            boardId: destBoardId,
+            desc,
+          });
+          Rules.insert({
+            title: ruleName,
+            triggerId,
+            actionId,
+            boardId,
+          });
         },
       },
     ];

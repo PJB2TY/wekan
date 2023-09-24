@@ -1,3 +1,6 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import moment from 'moment/min/moment-with-locales';
+
 // Filtered view manager
 // We define local filter objects for each different type of field (SetFilter,
 // RangeFilter, dateFilter, etc.). We then define a global `Filter` object whose
@@ -53,7 +56,12 @@ class DateFilter {
 
   // thisWeek is a convenience method for calling relativeWeek with 1
   thisWeek() {
-    this.relativeWeek(1);
+    this.relativeWeek(1, 'this')
+  }
+
+  // nextWeek is a convenience method for calling relativeWeek with 1
+  nextWeek() {
+    this.relativeWeek(1, 'next')
   }
 
   // relativeDay builds a filter starting from now and including all
@@ -81,11 +89,17 @@ class DateFilter {
     this._updateState('day');
   }
 
-  // relativeWeek builds a filter starting from today and including all
+  // relativeWeek builds a filter starting from today (for this week)
+  // or 7 days after (for next week) and including all
   // weeks up to today +/- offset. This considers the user's preferred
   // start of week day (as defined by Meteor).
-  relativeWeek(offset) {
-    if (this._filterState == 'week') {
+  relativeWeek(offset, week) {
+    if (this._filterState == 'thisweek') {
+      this.reset();
+      return;
+    }
+
+    if (this._filterState == 'nextweek') {
       this.reset();
       return;
     }
@@ -94,28 +108,43 @@ class DateFilter {
     // preferred starting day of the week. This date should be added
     // to the moment start of week to get the real start of week date.
     // The default is 1, meaning Monday.
-    const currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     const weekStartDay = currentUser ? currentUser.getStartDayOfWeek() : 1;
 
-    // Moments are mutable so they must be cloned before modification
-    var thisWeekStart = moment()
-      .startOf('day')
-      .startOf('week')
-      .add(weekStartDay, 'days');
-    var thisWeekEnd = thisWeekStart
-      .clone()
-      .add(offset, 'week')
-      .endOf('day');
-    var startDate = thisWeekStart.toDate();
-    var endDate = thisWeekEnd.toDate();
+    if (week === 'this') {
+      // Moments are mutable so they must be cloned before modification
+      var WeekStart = moment()
+        .startOf('day')
+        .startOf('week')
+        .add(weekStartDay, 'days');
+      var WeekEnd = WeekStart
+        .clone()
+        .add(6, 'days')
+        .endOf('day');
+
+      this._updateState('thisweek');
+    } else if (week === 'next') {
+      // Moments are mutable so they must be cloned before modification
+      var WeekStart = moment()
+        .startOf('day')
+        .startOf('week')
+        .add(weekStartDay + 7, 'days');
+      var WeekEnd = WeekStart
+        .clone()
+        .add(6, 'days')
+        .endOf('day');
+
+     this._updateState('nextweek');
+    }
+
+    var startDate = WeekStart.toDate();
+    var endDate = WeekEnd.toDate();
 
     if (offset >= 0) {
       this._filter = { $gte: startDate, $lte: endDate };
     } else {
       this._filter = { $lte: startDate, $gte: endDate };
     }
-
-    this._updateState('week');
   }
 
   // noDate builds a filter for items where date is not set
@@ -343,14 +372,14 @@ class AdvancedFilter {
   }
 
   _fieldNameToId(field) {
-    const found = CustomFields.findOne({
+    const found = ReactiveCache.getCustomField({
       name: field,
     });
     return found._id;
   }
 
   _fieldValueToId(field, value) {
-    const found = CustomFields.findOne({
+    const found = ReactiveCache.getCustomField({
       name: field,
     });
     if (
@@ -647,6 +676,7 @@ Filter = {
   title: new StringFilter(),
   customFields: new SetFilter('_id'),
   advanced: new AdvancedFilter(),
+  lists: new AdvancedFilter(), // we need the ability to filter list by name as well
 
   _fields: [
     'labelIds',
@@ -670,7 +700,8 @@ Filter = {
       _.any(this._fields, fieldName => {
         return this[fieldName]._isActive();
       }) ||
-      this.advanced._isActive()
+      this.advanced._isActive() ||
+      this.lists._isActive()
     );
   },
 
@@ -680,9 +711,11 @@ Filter = {
     const filterSelector = {};
     const emptySelector = {};
     let includeEmptySelectors = false;
+    let isFilterActive = false; // we don't want there is only Filter.lists
     this._fields.forEach(fieldName => {
       const filter = this[fieldName];
       if (filter._isActive()) {
+        isFilterActive = true;
         if (filter.subField !== '') {
           filterSelector[
             `${fieldName}.${filter.subField}`
@@ -713,12 +746,23 @@ Filter = {
     )
       selectors.push(filterSelector);
     if (includeEmptySelectors) selectors.push(emptySelector);
-    if (this.advanced._isActive())
+    if (this.advanced._isActive()) {
+      isFilterActive = true;
       selectors.push(this.advanced._getMongoSelector());
-    
-    return {
-      $or: selectors,
-    };
+    }
+
+    if(isFilterActive) {
+      return {
+        $or: selectors,
+      };
+    }
+    else {
+      // we don't want there is only Filter.lists
+      // otherwise no card will be displayed ...
+      // selectors = [exceptionsSelector];
+      // will return [{"_id":{"$in":[]}}]
+      return {};
+    }
   },
 
   mongoSelector(additionalSelector) {
@@ -735,6 +779,7 @@ Filter = {
       const filter = this[fieldName];
       filter.reset();
     });
+    this.lists.reset();
     this.advanced.reset();
     this.resetExceptions();
   },

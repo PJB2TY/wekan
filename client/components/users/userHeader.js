@@ -1,29 +1,58 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
+
 Template.headerUserBar.events({
   'click .js-open-header-member-menu': Popup.open('memberMenu'),
   'click .js-change-avatar': Popup.open('changeAvatar'),
 });
 
+BlazeComponent.extendComponent({
+  onCreated() {
+    Meteor.subscribe('setting');
+  },
+}).register('memberMenuPopup');
+
 Template.memberMenuPopup.helpers({
   templatesBoardId() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
-      return Meteor.user().getTemplatesBoardId();
+      return currentUser.getTemplatesBoardId();
     } else {
       // No need to getTemplatesBoardId on public board
       return false;
     }
   },
   templatesBoardSlug() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
-      return Meteor.user().getTemplatesBoardSlug();
+      return currentUser.getTemplatesBoardSlug();
     } else {
       // No need to getTemplatesBoardSlug() on public board
       return false;
     }
   },
+  isSameDomainNameSettingValue(){
+    const currSett = ReactiveCache.getCurrentSetting();
+    if(currSett && currSett != undefined && currSett.disableRegistration && currSett.mailDomainName !== undefined && currSett.mailDomainName != ""){
+      currentUser = ReactiveCache.getCurrentUser();
+      if (currentUser) {
+        let found = false;
+        for(let i = 0; i < currentUser.emails.length; i++) {
+          if(currentUser.emails[i].address.endsWith(currSett.mailDomainName)){
+            found = true;
+            break;
+          }
+        }
+        return found;
+      } else {
+        return true;
+      }
+    }
+    else
+      return false;
+  },
   isNotOAuth2AuthenticationMethod(){
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return currentUser.authenticationMethod.toLowerCase() != 'oauth2';
     } else {
@@ -34,14 +63,15 @@ Template.memberMenuPopup.helpers({
 
 Template.memberMenuPopup.events({
   'click .js-my-cards'() {
-    Popup.close();
+    Popup.back();
   },
   'click .js-due-cards'() {
-    Popup.close();
+    Popup.back();
   },
   'click .js-open-archived-board'() {
     Modal.open('archivedBoards');
   },
+  'click .js-invite-people': Popup.open('invitePeople'),
   'click .js-edit-profile': Popup.open('editProfile'),
   'click .js-change-settings': Popup.open('changeSettings'),
   'click .js-change-avatar': Popup.open('changeAvatar'),
@@ -53,7 +83,61 @@ Template.memberMenuPopup.events({
     AccountsTemplates.logout();
   },
   'click .js-go-setting'() {
-    Popup.close();
+    Popup.back();
+  },
+});
+
+BlazeComponent.extendComponent({
+  onCreated() {
+    Meteor.subscribe('setting');
+  },
+}).register('editProfilePopup');
+
+Template.invitePeoplePopup.events({
+  'click a.js-toggle-board-choose'(event){
+    let target = $(event.target);
+    if (!target.hasClass('js-toggle-board-choose')) {
+      target = target.parent();
+    }
+    const checkboxId = target.attr('id');
+    $(`#${checkboxId} .materialCheckBox`).toggleClass('is-checked');
+    $(`#${checkboxId}`).toggleClass('is-checked');
+  },
+  'click button.js-email-invite'(event){
+    const emails = $('#email-to-invite')
+      .val()
+      .toLowerCase()
+      .trim()
+      .split('\n')
+      .join(',')
+      .split(',');
+    const boardsToInvite = [];
+    $('.js-toggle-board-choose .materialCheckBox.is-checked').each(function() {
+      boardsToInvite.push($(this).data('id'));
+    });
+    const validEmails = [];
+    emails.forEach(email => {
+      if (email && SimpleSchema.RegEx.Email.test(email.trim())) {
+        validEmails.push(email.trim());
+      }
+    });
+    if (validEmails.length) {
+      Meteor.call('sendInvitation', validEmails, boardsToInvite, (_, rc) => {
+        if (rc == 0) {
+          let divInfos = document.getElementById("invite-people-infos");
+          if(divInfos && divInfos !== undefined){
+            divInfos.innerHTML = "<span style='color: green'>" + TAPi18n.__('invite-people-success') + "</span>";
+          }
+        }
+        else{
+          let divInfos = document.getElementById("invite-people-infos");
+          if(divInfos && divInfos !== undefined){
+            divInfos.innerHTML = "<span style='color: red'>" + TAPi18n.__('invite-people-error') + "</span>";
+          }
+        }
+        // Popup.close();
+      });
+    }
   },
 });
 
@@ -102,9 +186,9 @@ Template.editProfilePopup.events({
         'profile.initials': initials,
       },
     });
-    isChangeUserName = username !== Meteor.user().username;
+    isChangeUserName = username !== ReactiveCache.getCurrentUser().username;
     isChangeEmail =
-      email.toLowerCase() !== Meteor.user().emails[0].address.toLowerCase();
+      email.toLowerCase() !== ReactiveCache.getCurrentUser().emails[0].address.toLowerCase();
     if (isChangeUserName && isChangeEmail) {
       Meteor.call(
         'setUsernameAndEmail',
@@ -155,7 +239,7 @@ Template.editProfilePopup.events({
     } else Popup.back();
   },
   'click #deleteButton': Popup.afterConfirm('userDelete', function() {
-    Popup.close();
+    Popup.back();
     Users.remove(Meteor.userId());
     AccountsTemplates.logout();
   }),
@@ -169,76 +253,15 @@ Template.changePasswordPopup.onRendered(function() {
 
 Template.changeLanguagePopup.helpers({
   languages() {
-    return _.map(TAPi18n.getLanguages(), (lang, code) => {
-      // Same code in /client/components/main/layouts.js
-      // TODO : Make code reusable
-      const tag = code;
-      let name = lang.name;
-      if (lang.name === 'br') {
-        name = 'Brezhoneg';
-      } else if (lang.name === 'ar-EG') {
-        // ar-EG = Arabic (Egypt), simply Masri (مَصرى, [ˈmɑsˤɾi], Egyptian, Masr refers to Cairo)
-        name = 'مَصرى';
-      } else if (lang.name === 'fa-IR') {
-        // fa-IR = Persian (Iran)
-        name = 'فارسی/پارسی (ایران‎)';
-      } else if (lang.name === 'de-CH') {
-        name = 'Deutsch (Schweiz)';
-      } else if (lang.name === 'fr-BE') {
-        name = 'Français (Belgique)';
-      } else if (lang.name === 'fr-CA') {
-        name = 'Français (Canada)';
-      } else if (lang.name === 'fr-CH') {
-        name = 'Français (Schweiz)';
-      } else if (lang.name === 'ig') {
-        name = 'Igbo';
-      } else if (lang.name === 'lv') {
-        name = 'Latviešu';
-      } else if (lang.name === 'latviešu valoda') {
-        name = 'Latviešu';
-      } else if (lang.name === 'en-IT') {
-        name = 'English (Italy)';
-      } else if (lang.name === 'Español') {
-        name = 'español';
-      } else if (lang.name === 'es_419') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'es-419') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'Español de América Latina') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'es-LA') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'Español de Argentina') {
-        name = 'español de Argentina';
-      } else if (lang.name === 'Español de Chile') {
-        name = 'español de Chile';
-      } else if (lang.name === 'Español de Colombia') {
-        name = 'español de Colombia';
-      } else if (lang.name === 'Español de México') {
-        name = 'español de México';
-      } else if (lang.name === 'es-PY') {
-        name = 'español de Paraguayo';
-      } else if (lang.name === 'Español de Paraguayo') {
-        name = 'español de Paraguayo';
-      } else if (lang.name === 'Español de Perú') {
-        name = 'español de Perú';
-      } else if (lang.name === 'Español de Puerto Rico') {
-        name = 'español de Puerto Rico';
-      } else if (lang.name === 'oc') {
-        name = 'Occitan';
-      } else if (lang.name === 'st') {
-        name = 'Sãotomense';
-      } else if (lang.name === '繁体中文（台湾）') {
-        name = '繁體中文（台灣）';
-      }
-      return { tag, name };
-    }).sort(function(a, b) {
-      if (a.name === b.name) {
-        return 0;
-      } else {
-        return a.name > b.name ? 1 : -1;
-      }
-    });
+    return TAPi18n.getSupportedLanguages()
+      .map(({ tag, name }) => ({ tag: tag, name }))
+      .sort((a, b) => {
+        if (a.name === b.name) {
+          return 0;
+        } else {
+          return a.name > b.name ? 1 : -1;
+        }
+      });
   },
 
   isCurrentLanguage() {
@@ -260,7 +283,7 @@ Template.changeLanguagePopup.events({
 
 Template.changeSettingsPopup.helpers({
   hiddenSystemMessages() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return (currentUser.profile || {}).hasHiddenSystemMessages;
     } else if (window.localStorage.getItem('hasHiddenSystemMessages')) {
@@ -269,10 +292,20 @@ Template.changeSettingsPopup.helpers({
       return false;
     }
   },
-  showCardsCountAt() {
-    currentUser = Meteor.user();
+  rescueCardDescription() {
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
-      return Meteor.user().getLimitToShowCardsCount();
+      return (currentUser.profile || {}).rescueCardDescription;
+    } else if (window.localStorage.getItem('rescueCardDescription')) {
+      return true;
+    } else {
+      return false;
+    }
+  },
+  showCardsCountAt() {
+    const currentUser = ReactiveCache.getCurrentUser();
+    if (currentUser) {
+      return currentUser.getLimitToShowCardsCount();
     } else {
       return window.localStorage.getItem('limitToShowCardsCount');
     }
@@ -328,6 +361,9 @@ Template.changeSettingsPopup.events({
       window.localStorage.setItem('hasHiddenSystemMessages', 'true');
     }
   },
+  'click .js-rescue-card-description'() {
+    Meteor.call('toggleRescueCardDescription')
+    },
   'click .js-apply-user-settings'(event, templateInstance) {
     event.preventDefault();
     let minLimit = parseInt(

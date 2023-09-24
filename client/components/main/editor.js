@@ -1,286 +1,289 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 const specialHandles = [
   {userId: 'board_members', username: 'board_members'},
   {userId: 'card_members', username: 'card_members'}
 ];
 const specialHandleNames = specialHandles.map(m => m.username);
 
-Template.editor.onRendered(() => {
-  const textareaSelector = 'textarea';
-  const mentions = [
-    // User mentions
-    {
-      match: /\B@([\w.]*)$/,
-      search(term, callback) {
-        const currentBoard = Boards.findOne(Session.get('currentBoard'));
-        callback(
-          _.union(
-          currentBoard
-            .activeMembers()
-            .map(member => {
-              const user = Users.findOne(member.userId);
-              const username = user.username;
-              const fullName = user.profile && user.profile !== undefined ?  user.profile.fullname : "";
-              return username.includes(term) || fullName.includes(term) ?  fullName + "(" + username + ")" : null;
-            })
-            .filter(Boolean), [...specialHandleNames])
-        );
-      },
-      template(value) {
-        return value;
-      },
-      replace(username) {
-        return `@${username} `;
-      },
-      index: 1,
-    },
-  ];
-  const enableTextarea = function() {
-    const $textarea = this.$(textareaSelector);
-    autosize($textarea);
-    $textarea.escapeableTextComplete(mentions);
-  };
-  if (Meteor.settings.public.RICHER_CARD_COMMENT_EDITOR !== false) {
-    const isSmall = Utils.isMiniScreen();
-    const toolbar = isSmall
-      ? [
-          ['view', ['fullscreen']],
-          ['table', ['table']],
-          ['font', ['bold', 'underline']],
-          //['fontsize', ['fontsize']],
-          ['color', ['color']],
-        ]
-      : [
-          ['style', ['style']],
-          ['font', ['bold', 'underline', 'clear']],
-          ['fontsize', ['fontsize']],
-          ['fontname', ['fontname']],
-          ['color', ['color']],
-          ['para', ['ul', 'ol', 'paragraph']],
-          ['table', ['table']],
-          //['insert', ['link', 'picture', 'video']], // iframe tag will be sanitized TODO if iframe[class=note-video-clip] can be added into safe list, insert video can be enabled
-          ['insert', ['link']], //, 'picture']], // modal popup has issue somehow :(
-          ['view', ['fullscreen', 'codeview', 'help']],
-        ];
-    const cleanPastedHTML = function(input) {
-      const badTags = [
-        'style',
-        'script',
-        'applet',
-        'embed',
-        'noframes',
-        'noscript',
-        'meta',
-        'link',
-        'button',
-        'form',
-      ].join('|');
-      const badPatterns = new RegExp(
-        `(?:${[
-          `<(${badTags})s*[^>][\\s\\S]*?<\\/\\1>`,
-          `<(${badTags})[^>]*?\\/>`,
-        ].join('|')})`,
-        'gi',
-      );
-      let output = input;
-      // remove bad Tags
-      output = output.replace(badPatterns, '');
-      // remove attributes ' style="..."'
-      const badAttributes = new RegExp(
-        `(?:${[
-          'on\\S+=([\'"]?).*?\\1',
-          'href=([\'"]?)javascript:.*?\\2',
-          'style=([\'"]?).*?\\3',
-          'target=\\S+',
-        ].join('|')})`,
-        'gi',
-      );
-      output = output.replace(badAttributes, '');
-      output = output.replace(/(<a )/gi, '$1target=_ '); // always to new target
-      return output;
-    };
-    const editor = '.editor';
-    const selectors = [
-      `.js-new-description-form ${editor}`,
-      `.js-new-comment-form ${editor}`,
-      `.js-edit-comment ${editor}`,
-    ].join(','); // only new comment and edit comment
-    const inputs = $(selectors);
-    if (inputs.length === 0) {
-      // only enable richereditor to new comment or edit comment no others
-      enableTextarea();
-    } else {
-      const placeholder = inputs.attr('placeholder') || '';
-      const mSummernotes = [];
-      const getSummernote = function(input) {
-        const idx = inputs.index(input);
-        if (idx > -1) {
-          return mSummernotes[idx];
-        }
-        return undefined;
-      };
-      inputs.each(function(idx, input) {
-        mSummernotes[idx] = $(input).summernote({
-          placeholder,
-          callbacks: {
-            onInit(object) {
-              const originalInput = this;
-              $(originalInput).on('submitted', function() {
-                // when comment is submitted, the original textarea will be set to '', so shall we
-                if (!this.value) {
-                  const sn = getSummernote(this);
-                  sn && sn.summernote('code', '');
-                }
-              });
-              const jEditor = object && object.editable;
-              const toolbar = object && object.toolbar;
-              if (jEditor !== undefined) {
-                jEditor.escapeableTextComplete(mentions);
-              }
-              if (toolbar !== undefined) {
-                const fBtn = toolbar.find('.btn-fullscreen');
-                fBtn.on('click', function() {
-                  const $this = $(this),
-                    isActive = $this.hasClass('active');
-                  $('.minicards,#header-quick-access').toggle(!isActive); // mini card is still showing when editor is in fullscreen mode, we hide here manually
-                });
-              }
-            },
 
-            onImageUpload(files) {
-              const $summernote = getSummernote(this);
-              if (files && files.length > 0) {
-                const image = files[0];
-                const currentCard = Utils.getCurrentCard();
-                const MAX_IMAGE_PIXEL = Utils.MAX_IMAGE_PIXEL;
-                const COMPRESS_RATIO = Utils.IMAGE_COMPRESS_RATIO;
-                const insertImage = src => {
-                  // process all image upload types to the description/comment window
-                  const img = document.createElement('img');
-                  img.src = src;
-                  img.setAttribute('width', '100%');
-                  $summernote.summernote('insertNode', img);
-                };
-                const processData = function(fileObj) {
-                  Utils.processUploadedAttachment(
-                    currentCard,
-                    fileObj,
-                    attachment => {
-                      if (
-                        attachment &&
-                        attachment._id &&
-                        attachment.isImage()
-                      ) {
-                        attachment.one('uploaded', function() {
-                          const maxTry = 3;
-                          const checkItvl = 500;
-                          let retry = 0;
-                          const checkUrl = function() {
-                            // even though uploaded event fired, attachment.url() is still null somehow //TODO
-                            const url = attachment.url();
-                            if (url) {
-                              insertImage(
-                                `${location.protocol}//${location.host}${url}`,
-                              );
-                            } else {
-                              retry++;
-                              if (retry < maxTry) {
-                                setTimeout(checkUrl, checkItvl);
-                              }
+BlazeComponent.extendComponent({
+  onRendered() {
+    const textareaSelector = 'textarea';
+    const mentions = [
+      // User mentions
+      {
+        match: /\B@([\w.-]*)$/,
+        search(term, callback) {
+          const currentBoard = Utils.getCurrentBoard();
+          callback(
+            _.union(
+            currentBoard
+              .activeMembers()
+              .map(member => {
+                const user = ReactiveCache.getUser(member.userId);
+                const username = user.username;
+                const fullName = user.profile && user.profile !== undefined && user.profile.fullname ? user.profile.fullname : "";
+                return username.includes(term) || fullName.includes(term) ? user : null;
+              })
+              .filter(Boolean), [...specialHandles])
+          );
+        },
+        template(user) {
+          if (user.profile && user.profile.fullname) {
+            return (user.profile.fullname + " (" + user.username + ")");
+          }
+          return user.username;
+        },
+        replace(user) {
+          if (user.profile && user.profile.fullname) {
+            return `@${user.username} (${user.profile.fullname}) `;
+          }
+          return `@${user.username} `;
+        },
+        index: 1,
+      },
+    ];
+    const enableTextarea = function() {
+      const $textarea = this.$(textareaSelector);
+      autosize($textarea);
+      $textarea.escapeableTextComplete(mentions);
+    };
+    if (Meteor.settings.public.RICHER_CARD_COMMENT_EDITOR !== false) {
+      const isSmall = Utils.isMiniScreen();
+      const toolbar = isSmall
+        ? [
+            ['view', ['fullscreen']],
+            ['table', ['table']],
+            ['font', ['bold', 'underline']],
+            //['fontsize', ['fontsize']],
+            ['color', ['color']],
+          ]
+        : [
+            ['style', ['style']],
+            ['font', ['bold', 'underline', 'clear']],
+            ['fontsize', ['fontsize']],
+            ['fontname', ['fontname']],
+            ['color', ['color']],
+            ['para', ['ul', 'ol', 'paragraph']],
+            ['table', ['table']],
+            //['insert', ['link', 'picture', 'video']], // iframe tag will be sanitized TODO if iframe[class=note-video-clip] can be added into safe list, insert video can be enabled
+            ['insert', ['link']], //, 'picture']], // modal popup has issue somehow :(
+            ['view', ['fullscreen', 'codeview', 'help']],
+          ];
+      const cleanPastedHTML = function(input) {
+        const badTags = [
+          'style',
+          'script',
+          'applet',
+          'embed',
+          'noframes',
+          'noscript',
+          'meta',
+          'link',
+          'button',
+          'form',
+        ].join('|');
+        const badPatterns = new RegExp(
+          `(?:${[
+            `<(${badTags})s*[^>][\\s\\S]*?<\\/\\1>`,
+            `<(${badTags})[^>]*?\\/>`,
+          ].join('|')})`,
+          'gi',
+        );
+        let output = input;
+        // remove bad Tags
+        output = output.replace(badPatterns, '');
+        // remove attributes ' style="..."'
+        const badAttributes = new RegExp(
+          `(?:${[
+            'on\\S+=([\'"]?).*?\\1',
+            'href=([\'"]?)javascript:.*?\\2',
+            'style=([\'"]?).*?\\3',
+            'target=\\S+',
+          ].join('|')})`,
+          'gi',
+        );
+        output = output.replace(badAttributes, '');
+        output = output.replace(/(<a )/gi, '$1target=_ '); // always to new target
+        return output;
+      };
+      const editor = '.editor';
+      const selectors = [
+        `.js-new-description-form ${editor}`,
+        `.js-new-comment-form ${editor}`,
+        `.js-edit-comment ${editor}`,
+      ].join(','); // only new comment and edit comment
+      const inputs = $(selectors);
+      if (inputs.length === 0) {
+        // only enable richereditor to new comment or edit comment no others
+        enableTextarea();
+      } else {
+        const placeholder = inputs.attr('placeholder') || '';
+        const mSummernotes = [];
+        const getSummernote = function(input) {
+          const idx = inputs.index(input);
+          if (idx > -1) {
+            return mSummernotes[idx];
+          }
+          return undefined;
+        };
+        inputs.each(function(idx, input) {
+          mSummernotes[idx] = $(input).summernote({
+            placeholder,
+            callbacks: {
+              onInit(object) {
+                const originalInput = this;
+                $(originalInput).on('submitted', function() {
+                  // when comment is submitted, the original textarea will be set to '', so shall we
+                  if (!this.value) {
+                    const sn = getSummernote(this);
+                    sn && sn.summernote('code', '');
+                  }
+                });
+                const jEditor = object && object.editable;
+                const toolbar = object && object.toolbar;
+                if (jEditor !== undefined) {
+                  jEditor.escapeableTextComplete(mentions);
+                }
+                if (toolbar !== undefined) {
+                  const fBtn = toolbar.find('.btn-fullscreen');
+                  fBtn.on('click', function() {
+                    const $this = $(this),
+                      isActive = $this.hasClass('active');
+                    $('.minicards,#header-quick-access').toggle(!isActive); // mini card is still showing when editor is in fullscreen mode, we hide here manually
+                  });
+                }
+              },
+              onImageUpload(files) {
+                const $summernote = getSummernote(this);
+                if (files && files.length > 0) {
+                  const image = files[0];
+                  const currentCard = Utils.getCurrentCard();
+                  const MAX_IMAGE_PIXEL = Utils.MAX_IMAGE_PIXEL;
+                  const COMPRESS_RATIO = Utils.IMAGE_COMPRESS_RATIO;
+                  const processUpload = function(file) {
+                    const uploader = Attachments.insert(
+                      {
+                        file,
+                        meta: Utils.getCommonAttachmentMetaFrom(card),
+                        chunkSize: 'dynamic',
+                      },
+                      false,
+                    );
+                    uploader.on('uploaded', (error, fileRef) => {
+                      if (!error) {
+                        if (fileRef.isImage) {
+                          const img = document.createElement('img');
+                          img.src = fileRef.link();
+                          img.setAttribute('width', '100%');
+                          $summernote.summernote('insertNode', img);
+                        }
+                      }
+                    });
+                    uploader.start();
+                  };
+                  if (MAX_IMAGE_PIXEL) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                      const dataurl = e && e.target && e.target.result;
+                      if (dataurl !== undefined) {
+                        // need to shrink image
+                        Utils.shrinkImage({
+                          dataurl,
+                          maxSize: MAX_IMAGE_PIXEL,
+                          ratio: COMPRESS_RATIO,
+                          toBlob: true,
+                          callback(blob) {
+                            if (blob !== false) {
+                              blob.name = image.name;
+                              processUpload(blob);
                             }
-                          };
-                          checkUrl();
+                          },
                         });
                       }
-                    },
-                  );
-                };
-                if (MAX_IMAGE_PIXEL) {
-                  const reader = new FileReader();
-                  reader.onload = function(e) {
-                    const dataurl = e && e.target && e.target.result;
-                    if (dataurl !== undefined) {
-                      // need to shrink image
-                      Utils.shrinkImage({
-                        dataurl,
-                        maxSize: MAX_IMAGE_PIXEL,
-                        ratio: COMPRESS_RATIO,
-                        toBlob: true,
-                        callback(blob) {
-                          if (blob !== false) {
-                            blob.name = image.name;
-                            processData(blob);
-                          }
-                        },
-                      });
-                    }
-                  };
-                  reader.readAsDataURL(image);
-                } else {
-                  processData(image);
+                    };
+                    reader.readAsDataURL(image);
+                  } else {
+                    processUpload(image);
+                  }
                 }
-              }
-            },
-            onPaste(e) {
-              var clipboardData = e.clipboardData;
-              var pastedData = clipboardData.getData('Text');
+              },
+              onPaste(e) {
+                var clipboardData = e.clipboardData;
+                var pastedData = clipboardData.getData('Text');
 
-              //if pasted data is an image, exit
-              if (!pastedData.length) {
-                e.preventDefault();
-                return;
-              }
+                //if pasted data is an image, exit
+                if (!pastedData.length) {
+                  e.preventDefault();
+                  return;
+                }
 
-              // clear up unwanted tag info when user pasted in text
-              const thisNote = this;
-              const updatePastedText = function(object) {
-                const someNote = getSummernote(object);
-                // Fix Pasting text into a card is adding a line before and after
-                // (and multiplies by pasting more) by changing paste "p" to "br".
-                // Fixes https://github.com/wekan/wekan/2890 .
-                // == Fix Start ==
-                someNote.execCommand('defaultParagraphSeparator', false, 'br');
-                // == Fix End ==
-                const original = someNote.summernote('code');
-                const cleaned = cleanPastedHTML(original); //this is where to call whatever clean function you want. I have mine in a different file, called CleanPastedHTML.
-                someNote.summernote('code', ''); //clear original
-                someNote.summernote('pasteHTML', cleaned); //this sets the displayed content editor to the cleaned pasted code.
-              };
-              setTimeout(function() {
-                //this kinda sucks, but if you don't do a setTimeout,
-                //the function is called before the text is really pasted.
-                updatePastedText(thisNote);
-              }, 10);
+                // clear up unwanted tag info when user pasted in text
+                const thisNote = this;
+                const updatePastedText = function(object) {
+                  const someNote = getSummernote(object);
+                  // Fix Pasting text into a card is adding a line before and after
+                  // (and multiplies by pasting more) by changing paste "p" to "br".
+                  // Fixes https://github.com/wekan/wekan/2890 .
+                  // == Fix Start ==
+                  someNote.execCommand('defaultParagraphSeparator', false, 'br');
+                  // == Fix End ==
+                  const original = someNote.summernote('code');
+                  const cleaned = cleanPastedHTML(original); //this is where to call whatever clean function you want. I have mine in a different file, called CleanPastedHTML.
+                  someNote.summernote('code', ''); //clear original
+                  someNote.summernote('pasteHTML', cleaned); //this sets the displayed content editor to the cleaned pasted code.
+                };
+                setTimeout(function() {
+                  //this kinda sucks, but if you don't do a setTimeout,
+                  //the function is called before the text is really pasted.
+                  updatePastedText(thisNote);
+                }, 10);
+              },
             },
-          },
-          dialogsInBody: true,
-          spellCheck: true,
-          disableGrammar: false,
-          disableDragAndDrop: false,
-          toolbar,
-          popover: {
-            image: [
-              ['imagesize', ['imageSize100', 'imageSize50', 'imageSize25']],
-              ['float', ['floatLeft', 'floatRight', 'floatNone']],
-              ['remove', ['removeMedia']],
-            ],
-            link: [['link', ['linkDialogShow', 'unlink']]],
-            table: [
-              ['add', ['addRowDown', 'addRowUp', 'addColLeft', 'addColRight']],
-              ['delete', ['deleteRow', 'deleteCol', 'deleteTable']],
-            ],
-            air: [
-              ['color', ['color']],
-              ['font', ['bold', 'underline', 'clear']],
-            ],
-          },
-          height: 200,
+            dialogsInBody: true,
+            spellCheck: true,
+            disableGrammar: false,
+            disableDragAndDrop: false,
+            toolbar,
+            popover: {
+              image: [
+                ['imagesize', ['imageSize100', 'imageSize50', 'imageSize25']],
+                ['float', ['floatLeft', 'floatRight', 'floatNone']],
+                ['remove', ['removeMedia']],
+              ],
+              link: [['link', ['linkDialogShow', 'unlink']]],
+              table: [
+                ['add', ['addRowDown', 'addRowUp', 'addColLeft', 'addColRight']],
+                ['delete', ['deleteRow', 'deleteCol', 'deleteTable']],
+              ],
+              air: [
+                ['color', ['color']],
+                ['font', ['bold', 'underline', 'clear']],
+              ],
+            },
+            height: 200,
+          });
         });
-      });
+      }
+    } else {
+      enableTextarea();
     }
-  } else {
-    enableTextarea();
+  },
+  events() {
+    return [
+      {
+        'click a.fa.fa-copy'(event) {
+          const $editor = this.$('textarea.editor');
+          const promise = Utils.copyTextToClipboard($editor[0].value);
+
+          const $tooltip = this.$('.copied-tooltip');
+          Utils.showCopied(promise, $tooltip);
+        },
+      }
+    ]
   }
-});
+}).register('editor');
 
 import DOMPurify from 'dompurify';
 
@@ -327,19 +330,19 @@ Blaze.Template.registerHelper(
   new Template('mentions', function() {
     const view = this;
     let content = Blaze.toHTML(view.templateContentBlock);
-    const currentBoard = Boards.findOne(Session.get('currentBoard'));
+    const currentBoard = Utils.getCurrentBoard();
     if (!currentBoard)
       return HTML.Raw(
         DOMPurify.sanitize(content, { ALLOW_UNKNOWN_PROTOCOLS: true }),
       );
     const knowedUsers = _.union(currentBoard.members.map(member => {
-      const u = Users.findOne(member.userId);
+      const u = ReactiveCache.getUser(member.userId);
       if (u) {
         member.username = u.username;
       }
       return member;
     }), [...specialHandles]);
-    const mentionRegex = /\B@([\w.]*)/gi;
+    const mentionRegex = /\B@([\w.-]*)/gi;
 
     let currentMention;
     while ((currentMention = mentionRegex.exec(content)) !== null) {
@@ -393,6 +396,9 @@ Template.viewer.events({
     } else {
       const href = event.currentTarget.href;
       if (href) {
+        // Open links in current browser tab, changed from _blank to _self, and back to _blank:
+        // https://github.com/wekan/wekan/discussions/3534
+        //window.open(href, '_self');
         window.open(href, '_blank');
       }
     }

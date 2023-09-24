@@ -1,3 +1,6 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import moment from 'moment/min/moment-with-locales';
+import { TAPi18n } from '/imports/i18n';
 import { createWorkbook } from './createWorkbook';
 
 // exporter maybe is broken since Gridfs introduced, add fs and path
@@ -33,16 +36,16 @@ class ExporterExcel {
     };
     _.extend(
       result,
-      Boards.findOne(this._boardId, {
+      ReactiveCache.getBoard(this._boardId, {
         fields: {
           stars: 0,
         },
       }),
     );
-    result.lists = Lists.find(byBoard, noBoardId).fetch();
-    result.cards = Cards.find(byBoardNoLinked, noBoardId).fetch();
-    result.swimlanes = Swimlanes.find(byBoard, noBoardId).fetch();
-    result.customFields = CustomFields.find(
+    result.lists = ReactiveCache.getLists(byBoard, noBoardId);
+    result.cards = ReactiveCache.getCards(byBoardNoLinked, noBoardId);
+    result.swimlanes = ReactiveCache.getSwimlanes(byBoard, noBoardId);
+    result.customFields = ReactiveCache.getCustomFields(
       {
         boardIds: {
           $in: [this.boardId],
@@ -53,10 +56,10 @@ class ExporterExcel {
           boardId: 0,
         },
       },
-    ).fetch();
-    result.comments = CardComments.find(byBoard, noBoardId).fetch();
-    result.activities = Activities.find(byBoard, noBoardId).fetch();
-    result.rules = Rules.find(byBoard, noBoardId).fetch();
+    );
+    result.comments = ReactiveCache.getCardComments(byBoard, noBoardId);
+    result.activities = ReactiveCache.getActivities(byBoard, noBoardId);
+    result.rules = ReactiveCache.getRules(byBoard, noBoardId);
     result.checklists = [];
     result.checklistItems = [];
     result.subtaskItems = [];
@@ -64,37 +67,37 @@ class ExporterExcel {
     result.actions = [];
     result.cards.forEach((card) => {
       result.checklists.push(
-        ...Checklists.find({
+        ...ReactiveCache.getChecklists({
           cardId: card._id,
-        }).fetch(),
+        }),
       );
       result.checklistItems.push(
-        ...ChecklistItems.find({
+        ...ReactiveCache.getChecklistItems({
           cardId: card._id,
-        }).fetch(),
+        }),
       );
       result.subtaskItems.push(
-        ...Cards.find({
+        ...ReactiveCache.getCards({
           parentId: card._id,
-        }).fetch(),
+        }),
       );
     });
     result.rules.forEach((rule) => {
       result.triggers.push(
-        ...Triggers.find(
+        ...ReactiveCache.getTriggers(
           {
             _id: rule.triggerId,
           },
           noBoardId,
-        ).fetch(),
+        ),
       );
       result.actions.push(
-        ...Actions.find(
+        ...ReactiveCache.getActions(
           {
             _id: rule.actionId,
           },
           noBoardId,
-        ).fetch(),
+        ),
       );
     });
 
@@ -146,8 +149,7 @@ class ExporterExcel {
         'profile.avatarUrl': 1,
       },
     };
-    result.users = Users.find(byUserIds, userFields)
-      .fetch()
+    result.users = ReactiveCache.getUsers(byUserIds, userFields)
       .map((user) => {
         // user avatar is stored as a relative url, we export absolute
         if ((user.profile || {}).avatarUrl) {
@@ -156,8 +158,8 @@ class ExporterExcel {
         return user;
       });
 
-    
-    
+
+
     //init exceljs workbook
     const workbook = createWorkbook();
     workbook.creator = TAPi18n.__('export-board','',this.userLanguage);
@@ -167,7 +169,28 @@ class ExporterExcel {
     workbook.lastPrinted = new Date();
     const filename = `${result.title}.xlsx`;
     //init worksheet
-    const worksheet = workbook.addWorksheet(result.title, {
+    let worksheetTitle = result.title;
+    if (worksheetTitle.length > 31) {
+      // MS Excel doesn't allow worksheet name longer than 31 chars
+      // Exceljs truncate names to 31 chars
+      let words = worksheetTitle.split(' ');
+      let tmpTitle = '';
+      for (let i=0;i<words.length; i++) {
+        if (words[0].length > 27) {
+          // title has no spaces
+          tmpTitle = words[0].substr(0,27) + ' ';
+          break;
+        }
+        if(tmpTitle.length + words[i].length < 27) {
+          tmpTitle += words[i] + ' ';
+        }
+        else {
+          break;
+        }
+      }
+      worksheetTitle = tmpTitle + '...';
+    }
+    const worksheet = workbook.addWorksheet(worksheetTitle, {
       properties: {
         tabColor: {
           argb: 'FFC0000',
@@ -179,7 +202,7 @@ class ExporterExcel {
       },
     });
     //get worksheet
-    const ws = workbook.getWorksheet(result.title);
+    const ws = workbook.getWorksheet(worksheetTitle);
     ws.properties.defaultRowHeight = 20;
     //init columns
     //Excel font. Western: Arial. zh-CN: 宋体
@@ -311,7 +334,7 @@ class ExporterExcel {
     };
     ws.getCell('A1').alignment = {
       vertical: 'middle',
-      horizontal: 'center',
+      horizontal: 'left',
     };
     ws.getRow(1).height = 40;
     //get member and assignee info
@@ -354,6 +377,7 @@ class ExporterExcel {
     }
     //add data +8 hours
     function addTZhours(jdate) {
+      if (!jdate) { return ' '; }
       const curdate = new Date(jdate);
       const checkCorrectDate = moment(curdate);
       if (checkCorrectDate.isValid()) {
@@ -382,7 +406,14 @@ class ExporterExcel {
         wrapText: true,
       };
     }
-
+    // cell Card alignment
+    function cellCardAlignment(cellno) {
+      ws.getCell(cellno).alignment = {
+        vertical: 'top',
+        horizontal: 'left',
+        wrapText: true,
+      };
+    }
     //all border
     function allBorder(cellno) {
       ws.getCell(cellno).border = {
@@ -403,7 +434,7 @@ class ExporterExcel {
 
     //add blank row
     ws.addRow().values = ['', '', '', '', '', ''];
-    
+
     //add board description
     ws.addRow().values = [
       TAPi18n.__('description','',this.userLanguage),
@@ -412,6 +443,8 @@ class ExporterExcel {
 
     ws.mergeCells('B3:H3');
     ws.getRow(3).height = 40;
+    // In MS Excel, we can't use the AutoFit feature on a column that contains a cell merged with cells in other columns.
+    // Likewise, we can't use AutoFit on a row that contains a cell merged with cells in other rows.
     ws.getRow(3).font = {
       name: TAPi18n.__('excel-font'),
       size: 10,
@@ -428,7 +461,7 @@ class ExporterExcel {
       vertical: 'middle',
     };
     cellCenter('A3');
-    
+
     //add blank row
     ws.addRow().values = ['', '', '', '', '', ''];
 
@@ -463,7 +496,7 @@ class ExporterExcel {
       },
       numFmt: 'yyyy/mm/dd hh:mm:ss',
     };
-    
+
     cellCenter('A5');
     cellCenter('B5');
     cellCenter('C5');
@@ -471,7 +504,7 @@ class ExporterExcel {
     cellCenter('E5');
     cellLeft('F5');
     ws.getRow(5).height = 20;
-    
+
     allBorder('A5');
     allBorder('B5');
     allBorder('C5');
@@ -619,6 +652,7 @@ class ExporterExcel {
         name: TAPi18n.__('excel-font'),
         size: 10,
       };
+      // Border
       allBorder(`A${y}`);
       allBorder(`B${y}`);
       allBorder(`C${y}`);
@@ -637,20 +671,35 @@ class ExporterExcel {
       allBorder(`P${y}`);
       allBorder(`Q${y}`);
       allBorder(`R${y}`);
-      cellCenter(`A${y}`);
-      ws.getCell(`B${y}`).alignment = {
+      // Alignment
+      ws.getCell(`A${y}`).alignment = {
+        vertical: 'top',
+        horizontal: 'right',
         wrapText: true,
       };
-      ws.getCell(`C${y}`).alignment = {
+      cellCardAlignment(`B${y}`);
+      cellCardAlignment(`C${y}`);
+      cellCardAlignment(`D${y}`);
+      cellCardAlignment(`E${y}`);
+      cellCardAlignment(`F${y}`);
+      cellCardAlignment(`G${y}`);
+      cellCardAlignment(`H${y}`);
+      cellCardAlignment(`I${y}`);
+      cellCardAlignment(`J${y}`);
+      cellCardAlignment(`K${y}`);
+      cellCardAlignment(`L${y}`);
+      cellCardAlignment(`M${y}`);
+      cellCardAlignment(`N${y}`);
+      cellCardAlignment(`O${y}`);
+      cellCardAlignment(`P${y}`);
+      ws.getCell(`Q${y}`).alignment = {
+        vertical: 'top',
+        horizontal: 'center',
         wrapText: true,
       };
-      ws.getCell(`M${y}`).alignment = {
-        wrapText: true,
-      };
-      ws.getCell(`N${y}`).alignment = {
-        wrapText: true,
-      };
-      ws.getCell(`O${y}`).alignment = {
+      ws.getCell(`R${y}`).alignment = {
+        vertical: 'top',
+        horizontal: 'center',
         wrapText: true,
       };
     }
@@ -714,6 +763,14 @@ class ExporterExcel {
         },
       },
     ];
+    // cell Card alignment
+    function cellCardAlignmentWs2(cellno) {
+      ws2.getCell(cellno).alignment = {
+        vertical: 'top',
+        horizontal: 'left',
+        wrapText: true,
+      };
+    }
     //all border
     function allBorderWs2(cellno) {
       ws2.getCell(cellno).border = {
@@ -731,7 +788,7 @@ class ExporterExcel {
         },
       };
     }
-    
+
     //add title line
     ws2.mergeCells('A1:F1');
     ws2.getCell('A1').value = result.title;
@@ -758,7 +815,7 @@ class ExporterExcel {
       TAPi18n.__('card','',this.userLanguage),
       TAPi18n.__('owner','',this.userLanguage),
       TAPi18n.__('createdAt','',this.userLanguage),
-      TAPi18n.__('last-modified-at','',this.userLanguage), 
+      TAPi18n.__('last-modified-at','',this.userLanguage),
     ];
     ws2.getRow(3).height = 20;
     ws2.getRow(3).font = {
@@ -805,43 +862,31 @@ class ExporterExcel {
         name: TAPi18n.__('excel-font'),
         size: 10,
       };
-      ws2.getCell(`A${y}`).alignment = {
-        vertical: 'middle',
-        horizontal: 'center',
-        wrapText: true,
-      };
-      ws2.getCell(`B${y}`).alignment = {
-        vertical: 'middle',
-        wrapText: true,
-      };
-      ws2.getCell(`C${y}`).alignment = {
-        vertical: 'middle',
-        wrapText: true,
-      };
-      ws2.getCell(`D${y}`).alignment = {
-        vertical: 'middle',
-        wrapText: true,
-      };
-      ws2.getCell(`E${y}`).alignment = {
-        vertical: 'middle',
-        wrapText: true,
-      };
-      ws2.getCell(`F${y}`).alignment = {
-        vertical: 'middle',
-        wrapText: true,
-      };
+      // Border
       allBorderWs2(`A${y}`);
       allBorderWs2(`B${y}`);
       allBorderWs2(`C${y}`);
       allBorderWs2(`D${y}`);
       allBorderWs2(`E${y}`);
       allBorderWs2(`F${y}`);
+      // Alignment
+      ws2.getCell(`A${y}`).alignment = {
+        vertical: 'top',
+        horizontal: 'right',
+        wrapText: true,
+      };
+      cellCardAlignmentWs2(`B${y}`);
+      cellCardAlignmentWs2(`C${y}`);
+      cellCardAlignmentWs2(`D${y}`);
+      cellCardAlignmentWs2(`E${y}`);
+      cellCardAlignmentWs2(`F${y}`);
+
     }
     workbook.xlsx.write(res).then(function () {});
   }
 
   canExport(user) {
-    const board = Boards.findOne(this._boardId);
+    const board = ReactiveCache.getBoard(this._boardId);
     return board && board.isVisibleBy(user);
   }
 }

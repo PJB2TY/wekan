@@ -1,3 +1,4 @@
+import { ReactiveCache } from '/imports/reactiveCache';
 import { trelloGetMembersToMap } from './trelloMembersMapper';
 import { wekanGetMembersToMap } from './wekanMembersMapper';
 import { csvGetMembersToMap } from './csvMembersMapper';
@@ -87,8 +88,13 @@ BlazeComponent.extendComponent({
         if (err) {
           this.setError(err.error);
         } else {
+          let title = getSlug(this.importedData.get().title) || 'imported-board';
           Session.set('fromBoard', null);
-          Utils.goBoardId(res);
+          FlowRouter.go('board', {
+            id: res,
+            slug: title,
+          })
+          //Utils.goBoardId(res);
         }
       },
     );
@@ -169,9 +175,9 @@ BlazeComponent.extendComponent({
             this._refreshMembers(
               this.members().map(member => {
                 if (!member.wekanId) {
-                  let user = Users.findOne({ username: member.username });
+                  let user = ReactiveCache.getUser({ username: member.username });
                   if (!user) {
-                    user = Users.findOne({ importUsernames: member.username });
+                    user = ReactiveCache.getUser({ importUsernames: member.username });
                   }
                   if (user) {
                     // eslint-disable-next-line no-console
@@ -292,7 +298,7 @@ BlazeComponent.extendComponent({
   },
 
   onSelectUser() {
-    Popup.getOpenerComponent().mapSelectedMember(this.currentData()._id);
+    Popup.getOpenerComponent(5).mapSelectedMember(this.currentData().__originalId);
     Popup.back();
   },
 
@@ -304,3 +310,7 @@ BlazeComponent.extendComponent({
     ];
   },
 }).register('importMapMembersAddPopup');
+
+Template.importMapMembersAddPopup.helpers({
+  searchIndex: () => UserSearchIndex,
+})

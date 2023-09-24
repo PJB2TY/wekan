@@ -1,3 +1,5 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
 import { runOnServer } from './runOnServer';
 
 runOnServer(function() {
@@ -5,6 +7,7 @@ runOnServer(function() {
   // it here we use runOnServer to have it inside a function instead of an
   // if (Meteor.isServer) block
   import { ExporterExcel } from './server/ExporterExcel';
+  import { Picker } from 'meteor/communitypackages:picker';
 
   // todo XXX once we have a real API in place, move that route there
   // todo XXX also  share the route definition between the client and the server
@@ -35,26 +38,24 @@ runOnServer(function() {
     const loginToken = params.query.authToken;
     if (loginToken) {
       const hashToken = Accounts._hashLoginToken(loginToken);
-      user = Meteor.users.findOne({
+      user = ReactiveCache.getUser({
         'services.resume.loginTokens.hashedToken': hashToken,
       });
       adminId = user._id.toString();
-      impersonateDone = ImpersonatedUsers.findOne({
-        adminId: adminId,
-      });
+      impersonateDone = ReactiveCache.getImpersonatedUser({ adminId: adminId });
     } else if (!Meteor.settings.public.sandstorm) {
       Authentication.checkUserId(req.userId);
-      user = Users.findOne({
+      user = ReactiveCache.getUser({
         _id: req.userId,
         isAdmin: true,
       });
     }
-    
+
     let userLanguage = 'en';
     if(user && user.profile){
       userLanguage = user.profile.language
     }
-    
+
     const exporterExcel = new ExporterExcel(boardId, userLanguage);
     if (exporterExcel.canExport(user) || impersonateDone) {
       if (impersonateDone) {

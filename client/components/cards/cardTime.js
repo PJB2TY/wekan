@@ -1,3 +1,5 @@
+import { TAPi18n } from '/imports/i18n';
+
 BlazeComponent.extendComponent({
   template() {
     return 'editCardSpentTime';
@@ -34,7 +36,7 @@ BlazeComponent.extendComponent({
           }
           if (spentTime >= 0) {
             this.storeTime(spentTime, isOvertime);
-            Popup.close();
+            Popup.back();
           } else {
             this.error.set('invalid-time');
             evt.target.time.focus();
@@ -43,7 +45,7 @@ BlazeComponent.extendComponent({
         'click .js-delete-time'(evt) {
           evt.preventDefault();
           this.deleteTime();
-          Popup.close();
+          Popup.back();
         },
         'click a.js-toggle-overtime': this.toggleOvertime,
       },
@@ -81,13 +83,3 @@ BlazeComponent.extendComponent({
     ];
   },
 }).register('cardSpentTime');
-
-Template.timeBadge.helpers({
-  canModifyCard() {
-    return (
-      Meteor.user() &&
-      Meteor.user().isBoardMember() &&
-      !Meteor.user().isCommentOnly()
-    );
-  },
-});

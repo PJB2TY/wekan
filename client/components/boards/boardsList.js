@@ -1,5 +1,20 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
+
 const subManager = new SubsManager();
-const { calculateIndex, enableClickOnTouch } = Utils;
+
+Template.boardList.helpers({
+  hideCardCounterList() {
+    /* Bug Board icons random dance https://github.com/wekan/wekan/issues/4214
+       return Utils.isMiniScreen() && Session.get('currentBoard'); */
+    return true;
+  },
+  hideBoardMemberList() {
+    /* Bug Board icons random dance https://github.com/wekan/wekan/issues/4214
+       return Utils.isMiniScreen() && Session.get('currentBoard'); */
+    return true;
+  },
+})
 
 Template.boardListHeaderBar.events({
   'click .js-open-archived-board'() {
@@ -9,13 +24,17 @@ Template.boardListHeaderBar.events({
 
 Template.boardListHeaderBar.helpers({
   title() {
+    //if (FlowRouter.getRouteName() === 'template-container') {
+    //  return 'template-container';
+    //} else {
     return FlowRouter.getRouteName() === 'home' ? 'my-boards' : 'public';
+    //}
   },
   templatesBoardId() {
-    return Meteor.user() && Meteor.user().getTemplatesBoardId();
+    return ReactiveCache.getCurrentUser()?.getTemplatesBoardId();
   },
   templatesBoardSlug() {
-    return Meteor.user() && Meteor.user().getTemplatesBoardSlug();
+    return ReactiveCache.getCurrentUser()?.getTemplatesBoardSlug();
   },
 });
 
@@ -23,14 +42,13 @@ BlazeComponent.extendComponent({
   onCreated() {
     Meteor.subscribe('setting');
     Meteor.subscribe('tableVisibilityModeSettings');
-    let currUser = Meteor.user();
+    let currUser = ReactiveCache.getCurrentUser();
     let userLanguage;
-    if(currUser && currUser.profile){
+    if (currUser && currUser.profile) {
       userLanguage = currUser.profile.language
     }
     if (userLanguage) {
       TAPi18n.setLanguage(userLanguage);
-      T9n.setLanguage(userLanguage);
     }
   },
 
@@ -56,7 +74,7 @@ BlazeComponent.extendComponent({
         // of the previous and the following card -- if any.
         const prevBoardDom = ui.item.prev('.js-board').get(0);
         const nextBoardBom = ui.item.next('.js-board').get(0);
-        const sortIndex = calculateIndex(prevBoardDom, nextBoardBom, 1);
+        const sortIndex = Utils.calculateIndex(prevBoardDom, nextBoardBom, 1);
 
         const boardDomElement = ui.item.get(0);
         const board = Blaze.getData(boardDomElement);
@@ -68,113 +86,93 @@ BlazeComponent.extendComponent({
         // DOM in its initial state. The card move is then handled reactively by
         // Blaze with the below query.
         $boards.sortable('cancel');
-
         board.move(sortIndex.base);
       },
     });
 
-    // ugly touch event hotfix
-    enableClickOnTouch(itemsSelector);
-
     // Disable drag-dropping if the current user is not a board member or is comment only
     this.autorun(() => {
-      if (Utils.isMiniScreen()) {
+      if (Utils.isTouchScreenOrShowDesktopDragHandles()) {
         $boards.sortable({
           handle: '.board-handle',
         });
       }
     });
   },
-  userHasTeams(){
-    if(Meteor.user() != null && Meteor.user().teams && Meteor.user().teams.length > 0)
+  userHasTeams() {
+    if (ReactiveCache.getCurrentUser()?.teams?.length > 0)
       return true;
     else
       return false;
   },
   teamsDatas() {
-    if(Meteor.user().teams)
-      return Meteor.user().teams;
+    const teams = ReactiveCache.getCurrentUser()?.teams
+    if (teams)
+      return teams.sort((a, b) => a.teamDisplayName.localeCompare(b.teamDisplayName));
     else
       return [];
   },
-  userHasOrgs(){
-    if(Meteor.user() != null && Meteor.user().orgs && Meteor.user().orgs.length > 0)
+  userHasOrgs() {
+    if (ReactiveCache.getCurrentUser()?.orgs?.length > 0)
       return true;
     else
       return false;
   },
   orgsDatas() {
-    if(Meteor.user().orgs)
-      return Meteor.user().orgs;
+    const orgs = ReactiveCache.getCurrentUser()?.orgs;
+    if (orgs)
+      return orgs.sort((a, b) => a.orgDisplayName.localeCompare(b.orgDisplayName));
     else
       return [];
   },
-  userHasOrgsOrTeams(){
-    let boolUserHasOrgs;
-    if(Meteor.user() != null && Meteor.user().orgs && Meteor.user().orgs.length > 0)
-      boolUserHasOrgs = true;
-    else
-      boolUserHasOrgs = false;
-
-    let boolUserHasTeams;
-    if(Meteor.user() != null && Meteor.user().teams && Meteor.user().teams.length > 0)
-      boolUserHasTeams = true;
-    else
-      boolUserHasTeams = false;
-
-    return (boolUserHasOrgs || boolUserHasTeams);
+  userHasOrgsOrTeams() {
+    const ret = this.userHasOrgs() || this.userHasTeams();
+    return ret;
   },
   boards() {
     let query = {
-      //archived: false,
-      ////type: { $in: ['board','template-container'] },
-      //type: 'board',
+      // { type: 'board' },
+      // { type: { $in: ['board','template-container'] } },
       $and: [
         { archived: false },
-        { type: 'board' },
-        { $or:[] }
+        { type: { $in: ['board', 'template-container'] } },
+        { $or: [] },
+        { title: { $not: { $regex: /^\^.*\^$/ } } }
       ]
     };
 
     let allowPrivateVisibilityOnly = TableVisibilityModeSettings.findOne('tableVisibilityMode-allowPrivateOnly');
 
-    if (FlowRouter.getRouteName() === 'home'){
-      query.$and[2].$or.push({'members.userId': Meteor.userId()});
+    if (FlowRouter.getRouteName() === 'home') {
+      query.$and[2].$or.push({ 'members.userId': Meteor.userId() });
 
-      if(allowPrivateVisibilityOnly !== undefined && allowPrivateVisibilityOnly.booleanValue){
-        query.$and.push({'permission': 'private'});
+      if (allowPrivateVisibilityOnly !== undefined && allowPrivateVisibilityOnly.booleanValue) {
+        query.$and.push({ 'permission': 'private' });
       }
-      const currUser = Users.findOne(Meteor.userId());
-
-      // const currUser = Users.findOne(Meteor.userId(), {
-      //   fields: {
-      //     orgs: 1,
-      //     teams: 1,
-      //   },
-      // });
+      const currUser = ReactiveCache.getCurrentUser();
 
       let orgIdsUserBelongs = currUser !== undefined && currUser.teams !== 'undefined' ? currUser.orgIdsUserBelongs() : '';
-      if(orgIdsUserBelongs && orgIdsUserBelongs != ''){
+      if (orgIdsUserBelongs && orgIdsUserBelongs != '') {
         let orgsIds = orgIdsUserBelongs.split(',');
         // for(let i = 0; i < orgsIds.length; i++){
         //   query.$and[2].$or.push({'orgs.orgId': orgsIds[i]});
         // }
 
         //query.$and[2].$or.push({'orgs': {$elemMatch : {orgId: orgsIds[0]}}});
-        query.$and[2].$or.push({'orgs.orgId': {$in : orgsIds}});
+        query.$and[2].$or.push({ 'orgs.orgId': { $in: orgsIds } });
       }
 
       let teamIdsUserBelongs = currUser !== undefined && currUser.teams !== 'undefined' ? currUser.teamIdsUserBelongs() : '';
-      if(teamIdsUserBelongs && teamIdsUserBelongs != ''){
+      if (teamIdsUserBelongs && teamIdsUserBelongs != '') {
         let teamsIds = teamIdsUserBelongs.split(',');
         // for(let i = 0; i < teamsIds.length; i++){
         //   query.$or[2].$or.push({'teams.teamId': teamsIds[i]});
         // }
         //query.$and[2].$or.push({'teams': { $elemMatch : {teamId: teamsIds[0]}}});
-        query.$and[2].$or.push({'teams.teamId': {$in : teamsIds}});
+        query.$and[2].$or.push({ 'teams.teamId': { $in: teamsIds } });
       }
     }
-    else if(allowPrivateVisibilityOnly !== undefined && !allowPrivateVisibilityOnly.booleanValue){
+    else if (allowPrivateVisibilityOnly !== undefined && !allowPrivateVisibilityOnly.booleanValue) {
       query = {
         archived: false,
         //type: { $in: ['board','template-container'] },
@@ -183,31 +181,54 @@ BlazeComponent.extendComponent({
       };
     }
 
-    return Boards.find(query, {
+    const ret = ReactiveCache.getBoards(query, {
       sort: { sort: 1 /* boards default sorting */ },
     });
+    return ret;
   },
+  boardLists(boardId) {
+    /* Bug Board icons random dance https://github.com/wekan/wekan/issues/4214
+    const lists = ReactiveCache.getLists({ 'boardId': boardId, 'archived': false },{sort: ['sort','asc']});
+    const ret = lists.map(list => {
+      let cardCount = ReactiveCache.getCards({ 'boardId': boardId, 'listId': list._id }).length;
+      return `${list.title}: ${cardCount}`;
+    });
+    return ret;
+    */
+    return [];
+  },
+
+  boardMembers(boardId) {
+    let boardMembers = [];
+    /* Bug Board icons random dance https://github.com/wekan/wekan/issues/4214
+    const lists = ReactiveCache.getBoard(boardId)
+    let members = lists.members
+    members.forEach(member => {
+      boardMembers.push(member.userId);
+    });
+    */
+    return boardMembers;
+  },
+
   isStarred() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     return user && user.hasStarred(this.currentData()._id);
   },
   isAdministrable() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     return user && user.isBoardAdmin(this.currentData()._id);
   },
 
   hasOvertimeCards() {
-    subManager.subscribe('board', this.currentData()._id, false);
     return this.currentData().hasOvertimeCards();
   },
 
   hasSpentTimeCards() {
-    subManager.subscribe('board', this.currentData()._id, false);
     return this.currentData().hasSpentTimeCards();
   },
 
   isInvited() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     return user && user.isInvitedTo(this.currentData()._id);
   },
 
@@ -217,24 +238,29 @@ BlazeComponent.extendComponent({
         'click .js-add-board': Popup.open('createBoard'),
         'click .js-star-board'(evt) {
           const boardId = this.currentData()._id;
-          Meteor.user().toggleBoardStar(boardId);
+          ReactiveCache.getCurrentUser().toggleBoardStar(boardId);
           evt.preventDefault();
         },
         'click .js-clone-board'(evt) {
+          let title = getSlug(ReactiveCache.getBoard(this.currentData()._id).title) || 'cloned-board';
           Meteor.call(
             'copyBoard',
             this.currentData()._id,
             {
-              sort: Boards.find({ archived: false }).count(),
+              sort: ReactiveCache.getBoards({ archived: false }).length,
               type: 'board',
-              title: Boards.findOne(this.currentData()._id).title,
+              title: ReactiveCache.getBoard(this.currentData()._id).title,
             },
             (err, res) => {
               if (err) {
-                this.setError(err.error);
+                console.error(err);
               } else {
                 Session.set('fromBoard', null);
-                Utils.goBoardId(res);
+                subManager.subscribe('board', res, false);
+                FlowRouter.go('board', {
+                  id: res,
+                  slug: title,
+                });
               }
             },
           );
@@ -258,10 +284,10 @@ BlazeComponent.extendComponent({
             }
           });
         },
-        'click #resetBtn'(event){
+        'click #resetBtn'(event) {
           let allBoards = document.getElementsByClassName("js-board");
           let currBoard;
-          for(let i=0; i < allBoards.length; i++){
+          for (let i = 0; i < allBoards.length; i++) {
             currBoard = allBoards[i];
             currBoard.style.display = "block";
           }
@@ -269,57 +295,55 @@ BlazeComponent.extendComponent({
         'click #filterBtn'(event) {
           event.preventDefault();
           let selectedTeams = document.querySelectorAll('#jsAllBoardTeams option:checked');
-          let selectedTeamsValues = Array.from(selectedTeams).map(function(elt){return elt.value});
+          let selectedTeamsValues = Array.from(selectedTeams).map(function (elt) { return elt.value });
           let index = selectedTeamsValues.indexOf("-1");
           if (index > -1) {
             selectedTeamsValues.splice(index, 1);
           }
 
           let selectedOrgs = document.querySelectorAll('#jsAllBoardOrgs option:checked');
-          let selectedOrgsValues = Array.from(selectedOrgs).map(function(elt){return elt.value});
+          let selectedOrgsValues = Array.from(selectedOrgs).map(function (elt) { return elt.value });
           index = selectedOrgsValues.indexOf("-1");
           if (index > -1) {
             selectedOrgsValues.splice(index, 1);
           }
 
-          if(selectedTeamsValues.length > 0 || selectedOrgsValues.length > 0){
+          if (selectedTeamsValues.length > 0 || selectedOrgsValues.length > 0) {
             const query = {
               $and: [
                 { archived: false },
                 { type: 'board' },
-                { $or:[] }
+                { $or: [] }
               ]
             };
-            if(selectedTeamsValues.length > 0)
-            {
-              query.$and[2].$or.push({'teams.teamId': {$in : selectedTeamsValues}});
+            if (selectedTeamsValues.length > 0) {
+              query.$and[2].$or.push({ 'teams.teamId': { $in: selectedTeamsValues } });
             }
-            if(selectedOrgsValues.length > 0)
-            {
-              query.$and[2].$or.push({'orgs.orgId': {$in : selectedOrgsValues}});
+            if (selectedOrgsValues.length > 0) {
+              query.$and[2].$or.push({ 'orgs.orgId': { $in: selectedOrgsValues } });
             }
 
-            let filteredBoards = Boards.find(query, {}).fetch();
+            let filteredBoards = ReactiveCache.getBoards(query, {});
             let allBoards = document.getElementsByClassName("js-board");
             let currBoard;
-            if(filteredBoards.length > 0){
+            if (filteredBoards.length > 0) {
               let currBoardId;
               let found;
-              for(let i=0; i < allBoards.length; i++){
+              for (let i = 0; i < allBoards.length; i++) {
                 currBoard = allBoards[i];
                 currBoardId = currBoard.classList[0];
-                found = filteredBoards.find(function(board){
+                found = filteredBoards.find(function (board) {
                   return board._id == currBoardId;
                 });
 
-                if(found !== undefined)
+                if (found !== undefined)
                   currBoard.style.display = "block";
                 else
                   currBoard.style.display = "none";
               }
             }
-            else{
-              for(let i=0; i < allBoards.length; i++){
+            else {
+              for (let i = 0; i < allBoards.length; i++) {
                 currBoard = allBoards[i];
                 currBoard.style.display = "none";
               }

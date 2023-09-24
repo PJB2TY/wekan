@@ -1,5 +1,16 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 const commentReactionSchema = new SimpleSchema({
-  reactionCodepoint: { type: String, optional: false },
+  reactionCodepoint: {
+    type: String,
+    optional: false,
+    max: 9, // max length of reaction code
+    custom() {
+      if (!this.value.match(/^&#\d{4,6};$/)) { // regex for only valid reactions
+        return "incorrectReactionCode";
+      }
+    },
+  },
   userIds: { type: [String], defaultValue: [] }
 });
 
@@ -40,13 +51,13 @@ CardCommentReactions.attachSchema(
 
 CardCommentReactions.allow({
   insert(userId, doc) {
-    return allowIsBoardMember(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMember(userId, ReactiveCache.getBoard(doc.boardId));
   },
   update(userId, doc) {
-    return allowIsBoardMember(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMember(userId, ReactiveCache.getBoard(doc.boardId));
   },
   remove(userId, doc) {
-    return allowIsBoardMember(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMember(userId, ReactiveCache.getBoard(doc.boardId));
   },
   fetch: ['boardId'],
 });
@@ -54,6 +65,6 @@ CardCommentReactions.allow({
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    CardCommentReactions._collection._ensureIndex({ cardCommentId: 1 }, { unique: true });
+    CardCommentReactions._collection.createIndex({ cardCommentId: 1 }, { unique: true });
   });
 }

@@ -1,4 +1,7 @@
-const escapeForRegex = require('escape-string-regexp');
+import { ReactiveCache } from '/imports/reactiveCache';
+import escapeForRegex from 'escape-string-regexp';
+import DOMPurify from 'dompurify';
+
 CardComments = new Mongo.Collection('card_comments');
 
 /**
@@ -72,13 +75,13 @@ CardComments.attachSchema(
 
 CardComments.allow({
   insert(userId, doc) {
-    return allowIsBoardMember(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMember(userId, ReactiveCache.getBoard(doc.boardId));
   },
   update(userId, doc) {
-    return userId === doc.userId;
+    return userId === doc.userId || allowIsBoardAdmin(userId, ReactiveCache.getBoard(doc.boardId));
   },
   remove(userId, doc) {
-    return userId === doc.userId;
+    return userId === doc.userId || allowIsBoardAdmin(userId, ReactiveCache.getBoard(doc.boardId));
   },
   fetch: ['userId', 'boardId'],
 });
@@ -91,48 +94,52 @@ CardComments.helpers({
   },
 
   user() {
-    return Users.findOne(this.userId);
+    return ReactiveCache.getUser(this.userId);
   },
 
   reactions() {
-    const cardCommentReactions = CardCommentReactions.findOne({cardCommentId: this._id});
+    const cardCommentReactions = ReactiveCache.getCardCommentReaction({cardCommentId: this._id});
     return !!cardCommentReactions ? cardCommentReactions.reactions : [];
   },
 
   toggleReaction(reactionCodepoint) {
-
-    const cardCommentReactions = CardCommentReactions.findOne({cardCommentId: this._id});
-    const reactions = !!cardCommentReactions ? cardCommentReactions.reactions : [];
-    const userId = Meteor.userId();
-    const reaction = reactions.find(r => r.reactionCodepoint === reactionCodepoint);
-
-    // If no reaction is set for the codepoint, add this
-    if (!reaction) {
-      reactions.push({ reactionCodepoint, userIds: [userId] });
+    if (reactionCodepoint !== DOMPurify.sanitize(reactionCodepoint)) {
+      return false;
     } else {
 
-      // toggle user reaction upon previous reaction state
-      const userHasReacted = reaction.userIds.includes(userId);
-      if (userHasReacted) {
-        reaction.userIds.splice(reaction.userIds.indexOf(userId), 1);
-        if (reaction.userIds.length === 0) {
-          reactions.splice(reactions.indexOf(reaction), 1);
-        }
+      const cardCommentReactions = ReactiveCache.getCardCommentReaction({cardCommentId: this._id});
+      const reactions = !!cardCommentReactions ? cardCommentReactions.reactions : [];
+      const userId = Meteor.userId();
+      const reaction = reactions.find(r => r.reactionCodepoint === reactionCodepoint);
+
+      // If no reaction is set for the codepoint, add this
+      if (!reaction) {
+        reactions.push({ reactionCodepoint, userIds: [userId] });
       } else {
-        reaction.userIds.push(userId);
-      }
-    }
 
-    // If no reaction doc exists yet create otherwise update reaction set
-    if (!!cardCommentReactions) {
-      return CardCommentReactions.update({ _id: cardCommentReactions._id }, { $set: { reactions } });
-    } else {
-      return CardCommentReactions.insert({
-        boardId: this.boardId,
-        cardCommentId: this._id,
-        cardId: this.cardId,
-        reactions
-      });
+        // toggle user reaction upon previous reaction state
+        const userHasReacted = reaction.userIds.includes(userId);
+        if (userHasReacted) {
+          reaction.userIds.splice(reaction.userIds.indexOf(userId), 1);
+          if (reaction.userIds.length === 0) {
+            reactions.splice(reactions.indexOf(reaction), 1);
+          }
+        } else {
+          reaction.userIds.push(userId);
+        }
+      }
+
+      // If no reaction doc exists yet create otherwise update reaction set
+      if (!!cardCommentReactions) {
+        return CardCommentReactions.update({ _id: cardCommentReactions._id }, { $set: { reactions } });
+      } else {
+        return CardCommentReactions.insert({
+          boardId: this.boardId,
+          cardCommentId: this._id,
+          cardId: this.cardId,
+          reactions
+        });
+      }
     }
   }
 });
@@ -140,7 +147,7 @@ CardComments.helpers({
 CardComments.hookOptions.after.update = { fetchPrevious: false };
 
 function commentCreation(userId, doc) {
-  const card = Cards.findOne(doc.cardId);
+  const card = ReactiveCache.getCard(doc.cardId);
   Activities.insert({
     userId,
     activityType: 'addComment',
@@ -165,7 +172,7 @@ CardComments.textSearch = (userId, textArray) => {
   // eslint-disable-next-line no-console
   // console.log('cardComments selector:', selector);
 
-  const comments = CardComments.find(selector);
+  const comments = ReactiveCache.getCardComments(selector);
   // eslint-disable-next-line no-console
   // console.log('count:', comments.count());
   // eslint-disable-next-line no-console
@@ -178,8 +185,8 @@ if (Meteor.isServer) {
   // Comments are often fetched within a card, so we create an index to make these
   // queries more efficient.
   Meteor.startup(() => {
-    CardComments._collection._ensureIndex({ modifiedAt: -1 });
-    CardComments._collection._ensureIndex({ cardId: 1, createdAt: -1 });
+    CardComments._collection.createIndex({ modifiedAt: -1 });
+    CardComments._collection.createIndex({ cardId: 1, createdAt: -1 });
   });
 
   CardComments.after.insert((userId, doc) => {
@@ -187,7 +194,7 @@ if (Meteor.isServer) {
   });
 
   CardComments.after.update((userId, doc) => {
-    const card = Cards.findOne(doc.cardId);
+    const card = ReactiveCache.getCard(doc.cardId);
     Activities.insert({
       userId,
       activityType: 'editComment',
@@ -200,7 +207,7 @@ if (Meteor.isServer) {
   });
 
   CardComments.before.remove((userId, doc) => {
-    const card = Cards.findOne(doc.cardId);
+    const card = ReactiveCache.getCard(doc.cardId);
     Activities.insert({
       userId,
       activityType: 'deleteComment',
@@ -210,7 +217,7 @@ if (Meteor.isServer) {
       listId: card.listId,
       swimlaneId: card.swimlaneId,
     });
-    const activity = Activities.findOne({ commentId: doc._id });
+    const activity = ReactiveCache.getActivity({ commentId: doc._id });
     if (activity) {
       Activities.remove(activity._id);
     }
@@ -234,12 +241,12 @@ if (Meteor.isServer) {
     res,
   ) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramCardId = req.params.cardId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: CardComments.find({
+        data: ReactiveCache.getCardComments({
           boardId: paramBoardId,
           cardId: paramCardId,
         }).map(function (doc) {
@@ -272,13 +279,13 @@ if (Meteor.isServer) {
     '/api/boards/:boardId/cards/:cardId/comments/:commentId',
     function (req, res) {
       try {
-        Authentication.checkUserId(req.userId);
         const paramBoardId = req.params.boardId;
         const paramCommentId = req.params.commentId;
         const paramCardId = req.params.cardId;
+        Authentication.checkBoardAccess(req.userId, paramBoardId);
         JsonRoutes.sendResult(res, {
           code: 200,
-          data: CardComments.findOne({
+          data: ReactiveCache.getCardComment({
             _id: paramCommentId,
             cardId: paramCardId,
             boardId: paramBoardId,
@@ -308,9 +315,9 @@ if (Meteor.isServer) {
     '/api/boards/:boardId/cards/:cardId/comments',
     function (req, res) {
       try {
-        Authentication.checkUserId(req.userId);
         const paramBoardId = req.params.boardId;
         const paramCardId = req.params.cardId;
+        Authentication.checkBoardAccess(req.userId, paramBoardId);
         const id = CardComments.direct.insert({
           userId: req.body.authorId,
           text: req.body.comment,
@@ -325,7 +332,7 @@ if (Meteor.isServer) {
           },
         });
 
-        const cardComment = CardComments.findOne({
+        const cardComment = ReactiveCache.getCardComment({
           _id: id,
           cardId: paramCardId,
           boardId: paramBoardId,
@@ -354,10 +361,10 @@ if (Meteor.isServer) {
     '/api/boards/:boardId/cards/:cardId/comments/:commentId',
     function (req, res) {
       try {
-        Authentication.checkUserId(req.userId);
         const paramBoardId = req.params.boardId;
         const paramCommentId = req.params.commentId;
         const paramCardId = req.params.cardId;
+        Authentication.checkBoardAccess(req.userId, paramBoardId);
         CardComments.remove({
           _id: paramCommentId,
           cardId: paramCardId,

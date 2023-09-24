@@ -1,5 +1,9 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
 import Cards from '../../models/cards';
 import SessionData from '../../models/usersessiondata';
+import {QueryDebug} from "../../config/query-classes";
+import {OPERATOR_DEBUG} from "../../config/search-const";
 
 export class CardSearchPagedComponent extends BlazeComponent {
   onCreated() {
@@ -19,6 +23,8 @@ export class CardSearchPagedComponent extends BlazeComponent {
     this.sessionId = SessionData.getSessionId();
     this.subscriptionHandle = null;
     this.serverError = new ReactiveVar(false);
+    this.sessionData = null;
+    this.debug = new ReactiveVar(new QueryDebug());
 
     const that = this;
     this.subscriptionCallbacks = {
@@ -33,11 +39,11 @@ export class CardSearchPagedComponent extends BlazeComponent {
         that.hasResults.set(false);
         that.serverError.set(true);
         // eslint-disable-next-line no-console
-        console.log('Error.reason:', error.reason);
+        //console.log('Error.reason:', error.reason);
         // eslint-disable-next-line no-console
-        console.log('Error.message:', error.message);
+        //console.log('Error.message:', error.message);
         // eslint-disable-next-line no-console
-        console.log('Error.stack:', error.stack);
+        //console.log('Error.stack:', error.stack);
       },
     };
   }
@@ -52,41 +58,46 @@ export class CardSearchPagedComponent extends BlazeComponent {
     this.resultsCount = 0;
     this.totalHits = 0;
     this.queryErrors = null;
+    this.debug.set(new QueryDebug());
   }
 
   getSessionData(sessionId) {
-    return SessionData.findOne({
-      sessionId: sessionId ? sessionId : SessionData.getSessionId(),
+    return ReactiveCache.getSessionData({
+      sessionId: sessionId || SessionData.getSessionId(),
     });
   }
 
   getResults() {
     // eslint-disable-next-line no-console
     // console.log('getting results');
-    const sessionData = this.getSessionData();
+    this.sessionData = this.getSessionData();
     // eslint-disable-next-line no-console
-    console.log('session data:', sessionData);
+    console.log('session data:', this.sessionData);
     const cards = [];
-    sessionData.cards.forEach(cardId => {
-      cards.push(Cards.findOne({ _id: cardId }));
+    this.sessionData.cards.forEach(cardId => {
+      cards.push(ReactiveCache.getCard(cardId));
     });
-    this.queryErrors = sessionData.errors;
+    this.queryErrors = this.sessionData.errors;
     if (this.queryErrors.length) {
       // console.log('queryErrors:', this.queryErrorMessages());
       this.hasQueryErrors.set(true);
       // return null;
     }
+    this.debug.set(new QueryDebug(this.sessionData.debug));
+    console.log('debug:', this.debug.get().get());
+    console.log('debug.show():', this.debug.get().show());
+    console.log('debug.showSelector():', this.debug.get().showSelector());
 
     if (cards) {
-      this.totalHits = sessionData.totalHits;
+      this.totalHits = this.sessionData.totalHits;
       this.resultsCount = cards.length;
-      this.resultsStart = sessionData.lastHit - this.resultsCount + 1;
-      this.resultsEnd = sessionData.lastHit;
+      this.resultsStart = this.sessionData.lastHit - this.resultsCount + 1;
+      this.resultsEnd = this.sessionData.lastHit;
       this.resultsHeading.set(this.getResultsHeading());
       this.results.set(cards);
-      this.hasNextPage.set(sessionData.lastHit < sessionData.totalHits);
+      this.hasNextPage.set(this.sessionData.lastHit < this.sessionData.totalHits);
       this.hasPreviousPage.set(
-        sessionData.lastHit - sessionData.resultsCount > 0,
+        this.sessionData.lastHit - this.sessionData.resultsCount > 0,
       );
       return cards;
     }
@@ -113,6 +124,7 @@ export class CardSearchPagedComponent extends BlazeComponent {
 
   runGlobalSearch(queryParams) {
     this.searching.set(true);
+    this.debug.set(new QueryDebug());
     this.stopSubscription();
     this.subscriptionHandle = this.getSubscription(queryParams);
   }
@@ -157,7 +169,7 @@ export class CardSearchPagedComponent extends BlazeComponent {
     } else if (this.resultsCount === 1) {
       return TAPi18n.__('one-card-found');
     } else if (this.resultsCount === this.totalHits) {
-      return TAPi18n.__('n-cards-found', this.resultsCount);
+      return TAPi18n.__('n-cards-found', {sprintf: [this.resultsCount]});
     }
 
     return TAPi18n.__('n-n-of-n-cards-found', {

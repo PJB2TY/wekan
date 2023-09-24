@@ -1,3 +1,5 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+
 Announcements = new Mongo.Collection('announcements');
 
 Announcements.attachSchema(
@@ -49,14 +51,14 @@ Announcements.attachSchema(
 
 Announcements.allow({
   update(userId) {
-    const user = Users.findOne(userId);
+    const user = ReactiveCache.getUser(userId);
     return user && user.isAdmin;
   },
 });
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    Announcements._collection._ensureIndex({ modifiedAt: -1 });
+    Announcements._collection.createIndex({ modifiedAt: -1 });
     const announcements = Announcements.findOne({});
     if (!announcements) {
       Announcements.insert({ enabled: false, sort: 0 });

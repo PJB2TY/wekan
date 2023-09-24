@@ -1,3 +1,6 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import escapeForRegex from 'escape-string-regexp';
+import { TAPi18n } from '/imports/i18n';
 import {
   ALLOWED_BOARD_COLORS,
   ALLOWED_COLORS,
@@ -5,8 +8,10 @@ import {
   TYPE_TEMPLATE_BOARD,
   TYPE_TEMPLATE_CONTAINER,
 } from '/config/const';
+import Users from "./users";
 
-const escapeForRegex = require('escape-string-regexp');
+// const escapeForRegex = require('escape-string-regexp');
+
 Boards = new Mongo.Collection('boards');
 
 /**
@@ -290,6 +295,27 @@ Boards.attachSchema(
         }
       },
     },
+    backgroundImageURL: {
+      /**
+       * The background image URL of the board.
+       */
+      type: String,
+      optional: true,
+    },
+    allowsCardCounterList: {
+      /**
+       * Show card counter per list
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
+    allowsBoardMemberList: {
+      /**
+       * Show board member list
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
     description: {
       /**
        * The description of the board
@@ -374,6 +400,37 @@ Boards.attachSchema(
       type: Boolean,
       defaultValue: true,
     },
+    allowsDescriptionTextOnMinicard: {
+      /**
+       * Does the board allows description text on minicard?
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
+
+    allowsCoverAttachmentOnMinicard: {
+      /**
+       * Does the board allows cover attachment on minicard?
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
+
+    allowsBadgeAttachmentOnMinicard: {
+      /**
+       * Does the board allows badge attachment on minicard?
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
+
+    allowsCardSortingByNumberOnMinicard: {
+      /**
+       * Does the board allows card sorting by number on minicard?
+       */
+      type: Boolean,
+      defaultValue: false,
+    },
 
     allowsCardNumber: {
       /**
@@ -434,6 +491,14 @@ Boards.attachSchema(
     allowsCardSortingByNumber: {
       /**
        * Does the board allows card sorting by number?
+       */
+      type: Boolean,
+      defaultValue: true,
+    },
+
+    allowsShowLists: {
+      /**
+       * Does the board allows show lists on the card?
        */
       type: Boolean,
       defaultValue: true,
@@ -573,7 +638,7 @@ Boards.helpers({
     const _id = Boards.insert(this);
 
     // Copy all swimlanes in board
-    Swimlanes.find({
+    ReactiveCache.getSwimlanes({
       boardId: oldId,
       archived: false,
     }).forEach(swimlane => {
@@ -583,13 +648,13 @@ Boards.helpers({
 
     // copy custom field definitions
     const cfMap = {};
-    CustomFields.find({ boardIds: oldId }).forEach(cf => {
+    ReactiveCache.getCustomFields({ boardIds: oldId }).forEach(cf => {
       const id = cf._id;
       delete cf._id;
       cf.boardIds = [_id];
       cfMap[id] = CustomFields.insert(cf);
     });
-    Cards.find({ boardId: _id }).forEach(card => {
+    ReactiveCache.getCards({ boardId: _id }).forEach(card => {
       Cards.update(card._id, {
         $set: {
           customFields: card.customFields.map(cf => {
@@ -602,26 +667,27 @@ Boards.helpers({
 
     // copy rules, actions, and triggers
     const actionsMap = {};
-    Actions.find({ boardId: oldId }).forEach(action => {
+    ReactiveCache.getActions({ boardId: oldId }).forEach(action => {
       const id = action._id;
       delete action._id;
       action.boardId = _id;
       actionsMap[id] = Actions.insert(action);
     });
     const triggersMap = {};
-    Triggers.find({ boardId: oldId }).forEach(trigger => {
+    ReactiveCache.getTriggers({ boardId: oldId }).forEach(trigger => {
       const id = trigger._id;
       delete trigger._id;
       trigger.boardId = _id;
       triggersMap[id] = Triggers.insert(trigger);
     });
-    Rules.find({ boardId: oldId }).forEach(rule => {
+    ReactiveCache.getRules({ boardId: oldId }).forEach(rule => {
       delete rule._id;
       rule.boardId = _id;
       rule.actionId = actionsMap[rule.actionId];
       rule.triggerId = triggersMap[rule.triggerId];
       Rules.insert(rule);
     });
+    return _id;
   },
   /**
    * Return a unique title based on the current title
@@ -666,26 +732,22 @@ Boards.helpers({
   },
 
   cards() {
-    return Cards.find(
+    const ret = ReactiveCache.getCards(
       { boardId: this._id, archived: false },
       { sort: { title: 1 } },
     );
+    return ret;
   },
 
   lists() {
-    //currentUser = Meteor.user();
-    //if (currentUser) {
-    //  enabled = Meteor.user().hasSortBy();
-    //}
-    //return enabled ? this.newestLists() : this.draggableLists();
     return this.draggableLists();
   },
 
   newestLists() {
     // sorted lists from newest to the oldest, by its creation date or its cards' last modification date
-    const value = Meteor.user()._getListSortBy();
+    const value = ReactiveCache.getCurrentUser()._getListSortBy();
     const sortKey = { starred: -1, [value[0]]: value[1] }; // [["starred",-1],value];
-    return Lists.find(
+    return ReactiveCache.getLists(
       {
         boardId: this._id,
         archived: false,
@@ -693,12 +755,21 @@ Boards.helpers({
       { sort: sortKey },
     );
   },
+
   draggableLists() {
-    return Lists.find({ boardId: this._id }, { sort: { sort: 1 } });
+    return ReactiveCache.getLists({ boardId: this._id }, { sort: { sort: 1 } });
+  },
+
+  /** returns the last list
+   * @returns Document the last list
+   */
+  getLastList() {
+    const ret = ReactiveCache.getList({ boardId: this._id }, { sort: { sort: 'desc' } });
+    return ret;
   },
 
   nullSortLists() {
-    return Lists.find({
+    return ReactiveCache.getLists({
       boardId: this._id,
       archived: false,
       sort: { $eq: null },
@@ -706,14 +777,14 @@ Boards.helpers({
   },
 
   swimlanes() {
-    return Swimlanes.find(
+    return ReactiveCache.getSwimlanes(
       { boardId: this._id, archived: false },
       { sort: { sort: 1 } },
     );
   },
 
   nextSwimlane(swimlane) {
-    return Swimlanes.findOne(
+    return ReactiveCache.getSwimlane(
       {
         boardId: this._id,
         archived: false,
@@ -727,7 +798,7 @@ Boards.helpers({
   },
 
   nullSortSwimlanes() {
-    return Swimlanes.find({
+    return ReactiveCache.getSwimlanes({
       boardId: this._id,
       archived: false,
       sort: { $eq: null },
@@ -735,7 +806,7 @@ Boards.helpers({
   },
 
   hasOvertimeCards() {
-    const card = Cards.findOne({
+    const card = ReactiveCache.getCard({
       isOvertime: true,
       boardId: this._id,
       archived: false,
@@ -744,7 +815,7 @@ Boards.helpers({
   },
 
   hasSpentTimeCards() {
-    const card = Cards.findOne({
+    const card = ReactiveCache.getCard({
       spentTime: { $gt: 0 },
       boardId: this._id,
       archived: false,
@@ -753,34 +824,20 @@ Boards.helpers({
   },
 
   activities() {
-    return Activities.find({ boardId: this._id }, { sort: { createdAt: -1 } });
+    let linkedBoardId = [this._id];
+    ReactiveCache.getCards({
+      "type": "cardType-linkedBoard",
+      "boardId": this._id}
+      ).forEach(card => {
+        linkedBoardId.push(card.linkedId);
+    });
+    const ret = ReactiveCache.getActivities({ boardId: { $in: linkedBoardId } }, { sort: { createdAt: -1 } });
+    return ret;
   },
 
   activeMembers(){
-    return _.where(this.members, { isActive: true });
-  },
-
-  activeMembers2(members, boardTeamUsers) {
-    let allMembers = members;
-    if(this.teams !== undefined && this.teams.length > 0){
-      let index;
-      if(boardTeamUsers && boardTeamUsers.count() > 0){
-        boardTeamUsers.forEach((u) => {
-          index = allMembers.findIndex(function(m){ return m.userId == u._id});
-          if(index == -1){
-            allMembers.push({
-              "isActive": true,
-              "isAdmin": u.isAdmin !== undefined ? u.isAdmin : false,
-              "isCommentOnly" : false,
-              "isNoComments" : false,
-              "userId": u._id,
-            });
-          }
-        });
-      }
-    }
-
-    return allMembers;
+    const members = _.where(this.members, { isActive: true });
+    return _.sortBy(members, 'username');
   },
 
   activeOrgs() {
@@ -804,7 +861,7 @@ Boards.helpers({
   },
 
   memberUsers() {
-    return Users.find({ _id: { $in: _.pluck(this.members, 'userId') } });
+    return ReactiveCache.getUsers({ _id: { $in: _.pluck(this.members, 'userId') } });
   },
 
   getLabel(name, color) {
@@ -865,6 +922,16 @@ Boards.helpers({
     });
   },
 
+  hasAnyAllowsDate() {
+    const ret = this.allowsReceivedDate || this.allowsStartDate || this.allowsDueDate || this.allowsEndDate;
+    return ret;
+  },
+
+  hasAnyAllowsUser() {
+    const ret = this.allowsCreator || this.allowsMembers || this.allowsAssignee || this.allowsRequestedBy || this.allowsAssignedBy;
+    return ret;
+  },
+
   absoluteUrl() {
     return FlowRouter.url('board', { id: this._id, slug: this.slug });
   },
@@ -877,10 +944,11 @@ Boards.helpers({
   },
 
   customFields() {
-    return CustomFields.find(
+    const ret = ReactiveCache.getCustomFields(
       { boardIds: { $in: [this._id] } },
       { sort: { name: 1 } },
     );
+    return ret;
   },
 
   // XXX currently mutations return no value so we have an issue when using addLabel in import
@@ -889,6 +957,20 @@ Boards.helpers({
     const _id = Random.id(6);
     Boards.direct.update(this._id, { $push: { labels: { _id, name, color } } });
     return _id;
+  },
+
+  /** sets the new label order
+   * @param newLabelOrderOnlyIds new order array of _id, e.g. Array(4) [ "FvtD34", "PAEgDP", "LjRBxH", "YJ8sZz" ]
+   */
+  setNewLabelOrder(newLabelOrderOnlyIds) {
+    if (this.labels.length == newLabelOrderOnlyIds.length) {
+      if (this.labels.every(_label => newLabelOrderOnlyIds.indexOf(_label._id) >= 0)) {
+        const newLabels = _.sortBy(this.labels, _label => newLabelOrderOnlyIds.indexOf(_label._id));
+        if (this.labels.length == newLabels.length) {
+          Boards.direct.update(this._id, {$set: {labels: newLabels}});
+        }
+      }
+    }
   },
 
   searchBoards(term) {
@@ -906,7 +988,8 @@ Boards.helpers({
       query.$or = [{ title: regex }, { description: regex }];
     }
 
-    return Cards.find(query, projection);
+    const ret = ReactiveCache.getCards(query, projection);
+    return ret;
   },
 
   searchSwimlanes(term) {
@@ -927,46 +1010,55 @@ Boards.helpers({
       query.$or = [{ title: regex }, { description: regex }];
     }
 
-    return Swimlanes.find(query, projection);
+    return ReactiveCache.getSwimlanes(query, projection);
   },
 
   searchLists(term) {
-    check(term, Match.OneOf(String, null, undefined));
-
-    const query = { boardId: this._id };
-    if (this.isTemplatesBoard()) {
-      query.type = 'template-list';
-      query.archived = false;
-    } else {
-      query.type = { $nin: ['template-list'] };
-    }
-    const projection = { limit: 10, sort: { createdAt: -1 } };
-
+    let ret = null;
     if (term) {
-      const regex = new RegExp(term, 'i');
-
-      query.$or = [{ title: regex }, { description: regex }];
+      check(term, Match.OneOf(String));
+      term = term.trim();
     }
+    if (term) {
+      const query = { boardId: this._id };
+      if (this.isTemplatesBoard()) {
+        query.type = 'template-list';
+        query.archived = false;
+      } else {
+        query.type = { $nin: ['template-list'] };
+      }
+      const projection = { sort: { createdAt: -1 } };
 
-    return Lists.find(query, projection);
+      if (term) {
+        const regex = new RegExp(term, 'i');
+
+        query.$or = [{ title: regex }, { description: regex }];
+      }
+
+      ret = ReactiveCache.getLists(query, projection);
+    }
+    return ret;
   },
 
   searchCards(term, excludeLinked) {
-    check(term, Match.OneOf(String, null, undefined));
-
-    const query = { boardId: this._id };
-    if (excludeLinked) {
-      query.linkedId = null;
-    }
-    if (this.isTemplatesBoard()) {
-      query.type = 'template-card';
-      query.archived = false;
-    } else {
-      query.type = { $nin: ['template-card'] };
-    }
-    const projection = { limit: 10, sort: { createdAt: -1 } };
-
+    let ret = null;
     if (term) {
+      check(term, Match.OneOf(String));
+      term = term.trim();
+    }
+    if (term) {
+      const query = { boardId: this._id };
+      if (excludeLinked) {
+        query.linkedId = null;
+      }
+      if (this.isTemplatesBoard()) {
+        query.type = 'template-card';
+        query.archived = false;
+      } else {
+        query.type = { $nin: ['template-card'] };
+      }
+      const projection = { sort: { createdAt: -1 } };
+
       const regex = new RegExp(term, 'i');
 
       query.$or = [
@@ -974,9 +1066,9 @@ Boards.helpers({
         { description: regex },
         { customFields: { $elemMatch: { value: regex } } },
       ];
+      ret = ReactiveCache.getCards(query, projection);
     }
-
-    return Cards.find(query, projection);
+    return ret;
   },
   // A board alwasy has another board where it deposits subtasks of thasks
   // that belong to itself.
@@ -1009,7 +1101,7 @@ Boards.helpers({
   },
 
   getDefaultSubtasksBoard() {
-    return Boards.findOne(this.getDefaultSubtasksBoardId());
+    return ReactiveCache.getBoard(this.getDefaultSubtasksBoardId());
   },
 
   //Date Settings option such as received date, start date and so on.
@@ -1042,7 +1134,7 @@ Boards.helpers({
   },
 
   getDefaultDateSettingsBoard() {
-    return Boards.findOne(this.getDefaultDateSettingsBoardId());
+    return ReactiveCache.getBoard(this.getDefaultDateSettingsBoardId());
   },
 
   getDefaultSubtasksListId() {
@@ -1060,7 +1152,7 @@ Boards.helpers({
   },
 
   getDefaultSubtasksList() {
-    return Lists.findOne(this.getDefaultSubtasksListId());
+    return ReactiveCache.getList(this.getDefaultSubtasksListId());
   },
 
   getDefaultDateSettingsListId() {
@@ -1078,23 +1170,23 @@ Boards.helpers({
   },
 
   getDefaultDateSettingsList() {
-    return Lists.findOne(this.getDefaultDateSettingsListId());
+    return ReactiveCache.getList(this.getDefaultDateSettingsListId());
   },
 
   getDefaultSwimline() {
-    let result = Swimlanes.findOne({ boardId: this._id });
+    let result = ReactiveCache.getSwimlane({ boardId: this._id });
     if (result === undefined) {
       Swimlanes.insert({
         title: TAPi18n.__('default'),
         boardId: this._id,
       });
-      result = Swimlanes.findOne({ boardId: this._id });
+      result = ReactiveCache.getSwimlane({ boardId: this._id });
     }
     return result;
   },
 
   getNextCardNumber() {
-    const boardCards = Cards.find(
+    const boardCards = ReactiveCache.getCard(
       {
         boardId: this._id
       },
@@ -1102,26 +1194,27 @@ Boards.helpers({
         sort: { cardNumber: -1 },
         limit: 1
       }
-    ).fetch();
+    , true);
 
     // If no card is assigned to the board, return 1
-    if (!boardCards || boardCards.length === 0) {
+    if (!boardCards) {
       return 1;
     }
 
-    const maxCardNr = !!boardCards[0].cardNumber ? boardCards[0].cardNumber : 0;
+    const maxCardNr = !!boardCards.cardNumber ? boardCards.cardNumber : 0;
     return maxCardNr + 1;
   },
 
   cardsDueInBetween(start, end) {
-    return Cards.find({
+    const ret = ReactiveCache.getCards({
       boardId: this._id,
       dueAt: { $gte: start, $lte: end },
     });
+    return ret;
   },
 
   cardsInInterval(start, end) {
-    return Cards.find({
+    const ret = ReactiveCache.getCards({
       boardId: this._id,
       $or: [
         {
@@ -1150,6 +1243,7 @@ Boards.helpers({
         },
       ],
     });
+    return ret;
   },
 
   isTemplateBoard() {
@@ -1180,6 +1274,17 @@ Boards.mutations({
 
   setColor(color) {
     return { $set: { color } };
+  },
+
+  setBackgroundImageURL(backgroundImageURL) {
+    const currentUser = ReactiveCache.getCurrentUser();
+    if(currentUser.isBoardAdmin()) {
+      return { $set: { backgroundImageURL } };
+    } else if (currentUser.isAdmin()) {
+      return { $set: { backgroundImageURL } };
+    } else {
+      return false;
+    }
   },
 
   setVisibility(visibility) {
@@ -1326,6 +1431,10 @@ Boards.mutations({
     return { $set: { allowsCardSortingByNumber } };
   },
 
+  setAllowsShowLists(allowsShowLists) {
+    return { $set: { allowsShowLists } };
+  },
+
   setAllowsAttachments(allowsAttachments) {
     return { $set: { allowsAttachments } };
   },
@@ -1350,12 +1459,36 @@ Boards.mutations({
     return { $set: { allowsDescriptionText } };
   },
 
+  setallowsDescriptionTextOnMinicard(allowsDescriptionTextOnMinicard) {
+    return { $set: { allowsDescriptionTextOnMinicard } };
+  },
+
+  setallowsCoverAttachmentOnMinicard(allowsCoverAttachmentOnMinicard) {
+    return { $set: { allowsCoverAttachmentOnMinicard } };
+  },
+
+  setallowsBadgeAttachmentOnMinicard(allowsBadgeAttachmentOnMinicard) {
+    return { $set: { allowsBadgeAttachmentOnMinicard } };
+  },
+
+  setallowsCardSortingByNumberOnMinicard(allowsCardSortingByNumberOnMinicard) {
+    return { $set: { allowsCardSortingByNumberOnMinicard } };
+  },
+
   setAllowsActivities(allowsActivities) {
     return { $set: { allowsActivities } };
   },
 
   setAllowsReceivedDate(allowsReceivedDate) {
     return { $set: { allowsReceivedDate } };
+  },
+
+  setAllowsCardCounterList(allowsCardCounterList) {
+    return { $set: { allowsCardCounterList } };
+  },
+
+  setAllowsBoardMemberList(allowsBoardMemberList) {
+    return { $set: { allowsBoardMemberList } };
   },
 
   setAllowsStartDate(allowsStartDate) {
@@ -1400,23 +1533,23 @@ Boards.uniqueTitle = title => {
     new RegExp('^(?<title>.*?)\\s*(\\[(?<num>\\d+)]\\s*$|\\s*$)'),
   );
   const base = escapeForRegex(m.groups.title);
-  let num = 0;
-  Boards.find({ title: new RegExp(`^${base}\\s*\\[\\d+]\\s*$`) }).forEach(
-    board => {
-      const m = board.title.match(
-        new RegExp('^(?<title>.*?)\\s*\\[(?<num>\\d+)]\\s*$'),
-      );
-      if (m) {
-        const n = parseInt(m.groups.num, 10);
-        num = num < n ? n : num;
-      }
-    },
-  );
-
-  if (num > 0) {
-    return `${base} [${num + 1}]`;
+  const baseTitle = m.groups.title;
+  boards = ReactiveCache.getBoards({ title: new RegExp(`^${base}\\s*(\\[(?<num>\\d+)]\\s*$|\\s*$)`) });
+  if (boards.length > 0) {
+    let num = 0;
+    ReactiveCache.getBoards({ title: new RegExp(`^${base}\\s*\\[\\d+]\\s*$`) }).forEach(
+      board => {
+        const m = board.title.match(
+          new RegExp('^(?<title>.*?)\\s*\\[(?<num>\\d+)]\\s*$'),
+        );
+        if (m) {
+          const n = parseInt(m.groups.num, 10);
+          num = num < n ? n : num;
+        }
+      },
+    );
+    return `${baseTitle} [${num + 1}]`;
   }
-
   return title;
 };
 
@@ -1434,10 +1567,21 @@ Boards.userSearch = (
   if (userId) {
     selector.$or.push({ members: { $elemMatch: { userId, isActive: true } } });
   }
-  return Boards.find(selector, projection);
+  const ret = ReactiveCache.getBoards(selector, projection);
+  return ret;
 };
 
-Boards.userBoards = (userId, archived = false, selector = {}) => {
+Boards.userBoards = (
+  userId,
+  archived = false,
+  selector = {},
+  projection = {},
+) => {
+  const user = ReactiveCache.getUser(userId);
+  if (!user) {
+    return [];
+  }
+
   if (typeof archived === 'boolean') {
     selector.archived = archived;
   }
@@ -1445,15 +1589,20 @@ Boards.userBoards = (userId, archived = false, selector = {}) => {
     selector.type = 'board';
   }
 
-  selector.$or = [{ permission: 'public' }];
-  if (userId) {
-    selector.$or.push({ members: { $elemMatch: { userId, isActive: true } } });
-  }
-  return Boards.find(selector);
+  selector.$or = [
+    { permission: 'public' },
+    { members: { $elemMatch: { userId, isActive: true } } },
+    { orgs: { $elemMatch: { orgId: { $in: user.orgIds() }, isActive: true } } },
+    { teams: { $elemMatch: { teamId: { $in: user.teamIds() }, isActive: true } } },
+  ];
+
+  return ReactiveCache.getBoards(selector, projection);
 };
 
 Boards.userBoardIds = (userId, archived = false, selector = {}) => {
-  return Boards.userBoards(userId, archived, selector).map(board => {
+  return Boards.userBoards(userId, archived, selector, {
+    fields: { _id: 1 },
+  }).map(board => {
     return board._id;
   });
 };
@@ -1522,9 +1671,13 @@ if (Meteor.isServer) {
   });
 
   Meteor.methods({
+    getBackgroundImageURL(boardId) {
+      check(boardId, String);
+      return ReactiveCache.getBoard(boardId, {}, { backgroundImageUrl: 1 });
+    },
     quitBoard(boardId) {
       check(boardId, String);
-      const board = Boards.findOne(boardId);
+      const board = ReactiveCache.getBoard(boardId);
       if (board) {
         const userId = Meteor.userId();
         const index = board.memberIndex(userId);
@@ -1536,7 +1689,7 @@ if (Meteor.isServer) {
     },
     acceptInvite(boardId) {
       check(boardId, String);
-      const board = Boards.findOne(boardId);
+      const board = ReactiveCache.getBoard(boardId);
       if (!board) {
         throw new Meteor.Error('error-board-doesNotExist');
       }
@@ -1577,7 +1730,7 @@ if (Meteor.isServer) {
   Meteor.methods({
     archiveBoard(boardId) {
       check(boardId, String);
-      const board = Boards.findOne(boardId);
+      const board = ReactiveCache.getBoard(boardId);
       if (board) {
         const userId = Meteor.userId();
         const index = board.memberIndex(userId);
@@ -1612,7 +1765,7 @@ if (Meteor.isServer) {
 
 // Insert new board at last position in sort order.
 Boards.before.insert((userId, doc) => {
-  const lastBoard = Boards.findOne(
+  const lastBoard = ReactiveCache.getBoard(
     { sort: { $exists: true } },
     { sort: { sort: -1 } },
   );
@@ -1624,15 +1777,15 @@ Boards.before.insert((userId, doc) => {
 if (Meteor.isServer) {
   // Let MongoDB ensure that a member is not included twice in the same board
   Meteor.startup(() => {
-    Boards._collection._ensureIndex({ modifiedAt: -1 });
-    Boards._collection._ensureIndex(
+    Boards._collection.createIndex({ modifiedAt: -1 });
+    Boards._collection.createIndex(
       {
         _id: 1,
         'members.userId': 1,
       },
       { unique: true },
     );
-    Boards._collection._ensureIndex({ 'members.userId': 1 });
+    Boards._collection.createIndex({ 'members.userId': 1 });
   });
 
   // Genesis: the first activity of the newly created board
@@ -1798,7 +1951,7 @@ if (Meteor.isServer) {
         req.userId === paramUserId,
       );
 
-      const data = Boards.find(
+      const data = ReactiveCache.getBoards(
         {
           archived: false,
           'members.userId': paramUserId,
@@ -1834,7 +1987,7 @@ if (Meteor.isServer) {
       Authentication.checkUserId(req.userId);
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Boards.find(
+        data: ReactiveCache.getBoards(
           { permission: 'public' },
           {
             sort: { sort: 1 /* boards default sorting */ },
@@ -1866,8 +2019,8 @@ if (Meteor.isServer) {
       JsonRoutes.sendResult(res, {
         code: 200,
         data: {
-          private: Boards.find({ permission: 'private' }).count(),
-          public: Boards.find({ permission: 'public' }).count(),
+          private: ReactiveCache.getBoards({ permission: 'private' }).length,
+          public: ReactiveCache.getBoards({ permission: 'public' }).length,
         },
       });
     } catch (error) {
@@ -1887,12 +2040,12 @@ if (Meteor.isServer) {
    */
   JsonRoutes.add('GET', '/api/boards/:boardId', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
-      const id = req.params.boardId;
+      const paramBoardId = req.params.boardId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
 
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Boards.findOne({ _id: id }),
+        data: ReactiveCache.getBoard(paramBoardId),
       });
     } catch (error) {
       JsonRoutes.sendResult(res, {
@@ -1931,7 +2084,7 @@ if (Meteor.isServer) {
                    */
   JsonRoutes.add('POST', '/api/boards', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
+      Authentication.checkLoggedIn(req.userId);
       const id = Boards.insert({
         title: req.body.title,
         members: [
@@ -2005,11 +2158,11 @@ if (Meteor.isServer) {
    * @return_type string
    */
   JsonRoutes.add('PUT', '/api/boards/:boardId/labels', function(req, res) {
-    Authentication.checkUserId(req.userId);
     const id = req.params.boardId;
+    Authentication.checkBoardAccess(req.userId, id);
     try {
       if (req.body.hasOwnProperty('label')) {
-        const board = Boards.findOne({ _id: id });
+        const board = ReactiveCache.getBoard(id);
         const color = req.body.label.color;
         const name = req.body.label.name;
         const labelId = Random.id(6);
@@ -2056,7 +2209,7 @@ if (Meteor.isServer) {
       const boardId = req.params.boardId;
       const memberId = req.params.memberId;
       const { isAdmin, isNoComments, isCommentOnly, isWorker } = req.body;
-      const board = Boards.findOne({ _id: boardId });
+      const board = ReactiveCache.getBoard(boardId);
       function isTrue(data) {
         try {
           return data.toLowerCase() === 'true';
@@ -2094,27 +2247,33 @@ if (Meteor.isServer) {
    * @return_type [{attachmentId: string,
    *                attachmentName: string,
    *                attachmentType: string,
-   *                cardId: string,
+   *                url: string,
+   *                urlDownload: string,
+   *                boardId: string,
+   *                swimlaneId: string,
    *                listId: string,
-   *                swimlaneId: string}]
+   *                cardId: string
+   * }]
    */
   JsonRoutes.add('GET', '/api/boards/:boardId/attachments', function(req, res) {
-    Authentication.checkUserId(req.userId);
     const paramBoardId = req.params.boardId;
+    Authentication.checkBoardAccess(req.userId, paramBoardId);
     JsonRoutes.sendResult(res, {
       code: 200,
-      data: Attachments.files
-        .find({ boardId: paramBoardId }, { fields: { boardId: 0 } })
-        .map(function(doc) {
+      data: ReactiveCache
+        .getAttachments({'meta.boardId': paramBoardId }, {}, true)
+        .each()
+        .map(function(attachment) {
           return {
-            attachmentId: doc._id,
-            attachmentName: doc.original.name,
-            attachmentType: doc.original.type,
-            url: FlowRouter.url(doc.url()),
-            urlDownload: `${FlowRouter.url(doc.url())}?download=true&token=`,
-            cardId: doc.cardId,
-            listId: doc.listId,
-            swimlaneId: doc.swimlaneId,
+            attachmentId: attachment._id,
+            attachmentName: attachment.name,
+            attachmentType: attachment.type,
+            url: attachment.link(),
+            urlDownload: `${attachment.link()}?download=true&token=`,
+            boardId: attachment.meta.boardId,
+            swimlaneId: attachment.meta.swimlaneId,
+            listId: attachment.meta.listId,
+            cardId: attachment.meta.cardId
           };
         }),
     });

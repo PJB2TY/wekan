@@ -3,36 +3,63 @@
 # If you want to restart even on crash, uncomment while and done lines.
 #while true; do
       cd .build/bundle
-      #---------------------------------------------
+      #-------------------- REQUIRED SETTINGS START --------------------
+      # WRITEABLE PATH REQUIRED TO EXISTS AND BE WRITABLE FOR ATTACHMENTS TO WORK
+      export WRITABLE_PATH=..
+      #-----------------------------------------------------------------
+      # MongoDB database URL required
+      export MONGO_URL=mongodb://127.0.0.1:27017/wekan
+      #-----------------------------------------------------------------
+      # If port is 80, must change ROOT_URL to: http://YOUR-WEKAN-SERVER-IPv4-ADDRESS , like http://192.168.0.100
+      # If port is not 80, must change ROOT_URL to: http://YOUR-WEKAN-SERVER-IPv4-ADDRESS:YOUR-PORT-NUMBER , like http://192.168.0.100:2000
+      # If ROOT_URL is not correct, these do not work: translations, uploading attachments.
+      export ROOT_URL=http://localhost:2000
+      # If at public Internet, required different SSL/TLS settings:
+      # - https://github.com/wekan/wekan/wiki/Settings
+      # - Also at wiki: SSL/TLS config for Caddy/Nginx/Apache
+      #-----------------------------------------------------------------
+      # Must change to YOUR-PORT-NUMBER:
+      export PORT=2000
+      #-------------------- REQUIRED SETTINGS END ----------------------
+      #
+      #-------------------- OPTIONAL SETTINGS START --------------------
+      # If at public Internet, required different settings:
+      # - For ROOT_URL: https://github.com/wekan/wekan/wiki/Settings
+      # - For SSL/TLS, also at above wiki right menu: config for Caddy/Nginx/Apache
+      #-----------------------------------------------------------------
       # Debug OIDC OAuth2 etc.
       #export DEBUG=true
-      #---------------------------------------------
-      export MONGO_URL='mongodb://127.0.0.1:27017/wekan'
-      #---------------------------------------------
-      # Production: https://example.com/wekan
-      # Local: http://localhost:2000
-      #export ipaddress=$(ifdata -pa eth0)
-      export ROOT_URL='http://localhost:2000'
-      #---------------------------------------------
+      #-----------------------------------------------------------------
+      # ==== AWS S3 FOR FILES ====
+      # Any region. For example:
+      #   us-standard,us-west-1,us-west-2,
+      #   eu-west-1,eu-central-1,
+      #   ap-southeast-1,ap-northeast-1,sa-east-1
+      #
+      #export S3='{"s3":{"key": "xxx", "secret": "xxx", "bucket": "xxx", "region": "xxx"}}'
+      #-----------------------------------------------------------------
       # https://github.com/wekan/wekan/wiki/Troubleshooting-Mail
       # https://github.com/wekan/wekan-mongodb/blob/master/docker-compose.yml
-      export MAIL_URL='smtp://user:pass@mailserver.example.com:25/'
+      export MAIL_URL=smtp://user:pass@mailserver.example.com:25/
       export MAIL_FROM='Wekan Boards <info@example.com>'
+      # Currently MAIL_SERVICE is not in use.
       #export MAIL_SERVICE=Outlook365
       #export MAIL_SERVICE_USER=firstname.lastname@hotmail.com
       #export MAIL_SERVICE_PASSWORD=SecretPassword
       #---------------------------------------------
       #export KADIRA_OPTIONS_ENDPOINT=http://127.0.0.1:11011
       #---------------------------------------------
-      # This is local port where Wekan Node.js runs, same as below on Caddyfile settings.
-      export PORT=2000
       #---------------------------------------------
       # ==== NUMBER OF SEARCH RESULTS PER PAGE BY DEFAULT ====
       #export RESULTS_PER_PAGE=20
       #---------------------------------------------
       # Wekan Export Board works when WITH_API=true.
       # If you disable Wekan API with false, Export Board does not work.
-      export WITH_API='true'
+      export WITH_API=true
+      #---------------------------------------------------------------
+      # ==== AFTER OIDC LOGIN, ADD USERS AUTOMATICALLY TO THIS BOARD ID ====
+      # https://github.com/wekan/wekan/pull/5098
+      #- DEFAULT_BOARD_ID=abcd1234
       #---------------------------------------------------------------
       # ==== PASSWORD BRUTE FORCE PROTECTION ====
       #https://atmospherejs.com/lucasantoniassi/accounts-lockout
@@ -43,6 +70,21 @@
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
+      #---------------------------------------------------------------
+      # ==== ACCOUNT OPTIONS ====
+      # https://docs.meteor.com/api/accounts-multi.html#AccountsCommon-config
+      # Defaults below. Uncomment to change. wekan/server/accounts-common.js
+      # - ACCOUNTS_COMMON_LOGIN_EXPIRATION_IN_DAYS=90
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded attachments ====
+      #export ATTACHMENTS_UPLOAD_EXTERNAL_PROGRAM="/usr/local/bin/avscan {file}"
+      #export ATTACHMENTS_UPLOAD_MIME_TYPES="image/*,text/*"
+      #export ATTACHMENTS_UPLOAD_MAX_SIZE=5000000
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded avatars ====
+      #export AVATARS_UPLOAD_EXTERNAL_PROGRAM="/usr/local/bin/avscan {file}"
+      #export AVATARS_UPLOAD_MIME_TYPES="image/*"
+      #export AVATARS_UPLOAD_MAX_SIZE=500000
       #---------------------------------------------------------------
       # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
       # https://github.com/wekan/wekan/pull/2560
@@ -116,6 +158,10 @@
       # Example: export MATOMO_WITH_USERNAME=true
       #export MATOMO_WITH_USERNAME='false'
       #---------------------------------------------
+      # ==== METRICS ALLOWED IP ADDRESSES ====
+      # https://github.com/wekan/wekan/wiki/Metrics
+      #export METRICS_ALLOWED_IP_ADDRESSES=192.168.0.100,192.168.0.200
+      #-----------------------------------------------------------------
       # Enable browser policy and allow one trusted URL that can have iframe that has Wekan embedded inside.
       # Setting this to false is not recommended, it also disables all other browser policy protections
       # and allows all iframing etc. See wekan/server/policy.js
@@ -127,6 +173,10 @@
       # What to send to Outgoing Webhook, or leave out. Example, that includes all that are default: cardId,listId,oldListId,boardId,comment,user,card,commentId .
       # Example: export WEBHOOKS_ATTRIBUTES=cardId,listId,oldListId,boardId,comment,user,card,commentId
       export WEBHOOKS_ATTRIBUTES=''
+      #---------------------------------------------
+      # ==== AUTOLOGIN WITH OIDC/OAUTH2 ====
+      # https://github.com/wekan/wekan/wiki/autologin
+      #export OIDC_REDIRECTION_ENABLED=true
       #---------------------------------------------
       # OAUTH2 ORACLE on premise identity manager OIM
       #export ORACLE_OIM_ENABLED=true
@@ -215,7 +265,7 @@
       #export OAUTH2_ID_TOKEN_WHITELIST_FIELDS=[]
       #
       # OAUTH2 Request Permissions.
-      #export OAUTH2_REQUEST_PERMISSIONS='openid profile email'
+      #export OAUTH2_REQUEST_PERMISSIONS=openid profile email
       #
       # OAuth2 ID Mapping
       #export OAUTH2_ID_MAP=
@@ -495,7 +545,16 @@
       # Wait spinner to use
       #export WAIT_SPINNER=Bounce
       #---------------------------------------------------------------------
-      node main.js
+      # https://github.com/wekan/wekan/issues/3585#issuecomment-1021522132
+      # Add more Node heap:
+      #export NODE_OPTIONS="--max_old_space_size=4096"
+      # Add more stack:
+      #bash -c "ulimit -s 65500; exec node --stack-size=65500 --trace-deprecation main.js"
+      #bash -c "ulimit -s 65500; exec node --stack-size=65500 main.js"
+      #-------------------- OPTIONAL SETTINGS END ----------------------
+      bash -c "ulimit -s 65500; exec node main.js"
+      #node main.js
+      #---------------------------------------------------------------------
       # & >> ../../wekan.log
       cd ../..
 #done

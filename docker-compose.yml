@@ -90,15 +90,8 @@ services:
 
   wekandb:
     #-------------------------------------------------------------------------------------
-    # ==== MONGODB AND METEOR VERSION ====
-    # a) mongodb latest, like 3.2 - 4.4 or newer https://hub.docker.com/_/mongo?tab=description
-    # 2020-12-03:
-    # - Mongo image copied from Docker Hub mongo:4.4.2-bionic to Quay
-    #   to avoid Docker Hub rate limits.
-    # Quay image does work:
-    #   image: quay.io/wekan/mongo:4.4.2-bionic
-    # Docker Hub MongoDB image does work:
-    image: mongo:4.4
+    # ==== MONGODB FROM DOCKER HUB ====
+    image: mongo:6
     #-------------------------------------------------------------------------------------
     container_name: wekan-db
     restart: always
@@ -112,21 +105,35 @@ services:
       - 27017
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
       - wekan-db:/data/db
       - wekan-db-dump:/dump
+      #- /etc/timezone:/etc/timezone:ro # Do not use https://github.com/wekan/wekan/issues/5123
 
   wekan:
     #-------------------------------------------------------------------------------------
-    # ==== MONGODB AND METEOR VERSION ====
-    # a) Quay automatic builds do work work, https://quay.io/wekan/wekan
-    image: quay.io/wekan/wekan
-    # b) Using specific version tag:
-    # image: quay.io/wekan/wekan:v4.52
-    # c) Docker Hub builds do work https://hub.docker.com/r/wekanteam/wekan
-    # image: wekanteam/wekan
+    # ==== WEKAN FROM GITHUB/QUAY/DOCKER HUB ====
+    # All of GitHub, Quay and Docker Hub have latest, but because
+    # latest tag changes when is newest release,
+    # when upgrading would be better to use version tag.
+    # a) Using specific version tag is better:
+    # image: ghcr.io/wekan/wekan:v6.89
+    # image: quay.io/wekan/wekan:v6.89
+    # image: wekanteam/wekan:v6.89
+    # b) GitHub Container registry.
+    image: ghcr.io/wekan/wekan:latest
+    # c) Quay:
+    #image: quay.io/wekan/wekan:latest
+    # d) Docker Hub:
+    #image: wekanteam/wekan:latest
     #-------------------------------------------------------------------------------------
     container_name: wekan-app
+    # On CentOS 7 there is seccomp issue with glibc 6,
+    # so CentOS 7 users shoud use these security_opt seccomp:unconfined
+    # settings to get WeKan working. See:
+    #   - https://github.com/wekan/wekan/issues/4585
+    #   - https://github.com/wekan/wekan/issues/4587
+    #security_opt:
+    #  - seccomp:unconfined
     restart: always
     networks:
       - wekan-tier
@@ -144,6 +151,19 @@ services:
       # remove port mapping if you use nginx reverse proxy, port 8080 is already exposed to wekan-tier network
       - 80:8080
     environment:
+      #-----------------------------------------------------------------
+      # ==== WRITEABLE PATH FOR FILE UPLOADS ====
+      - WRITABLE_PATH=/data
+      #-----------------------------------------------------------------
+      # ==== AWS S3 FOR FILES ====
+      # Any region. For example:
+      #   us-standard,us-west-1,us-west-2,
+      #   eu-west-1,eu-central-1,
+      #   ap-southeast-1,ap-northeast-1,sa-east-1
+      #
+      #- S3='{"s3":{"key": "xxx", "secret": "xxx", "bucket": "xxx", "region": "xxx"}}'
+      #-----------------------------------------------------------------
+      # ==== MONGO_URL ====
       - MONGO_URL=mongodb://wekandb:27017/wekan
       #---------------------------------------------------------------
       # ==== ROOT_URL SETTING ====
@@ -160,7 +180,8 @@ services:
       - ROOT_URL=http://localhost  #   <=== using only at same laptop/desktop where Wekan is installed
       #---------------------------------------------------------------
       # ==== EMAIL SETTINGS ====
-      # Email settings are required in both MAIL_URL and Admin Panel,
+      # Email settings are only at MAIL_URL and MAIL_FROM.
+      # Admin Panel has test button, but it's not used for settings.
       #   see https://github.com/wekan/wekan/wiki/Troubleshooting-Mail
       #   For SSL in email, change smtp:// to smtps://
       # NOTE: Special characters need to be url-encoded in MAIL_URL.
@@ -168,9 +189,16 @@ services:
       #- MAIL_URL=smtp://user:pass@mailserver.example.com:25/
       - MAIL_URL=smtp://<mail_url>:25/?ignoreTLS=true&tls={rejectUnauthorized:false}
       - MAIL_FROM=Wekan Notifications <noreply.wekan@mydomain.com>
+      # Currently MAIL_SERVICE is not in use.
       #- MAIL_SERVICE=Outlook365
       #- MAIL_SERVICE_USER=firstname.lastname@hotmail.com
       #- MAIL_SERVICE_PASSWORD=SecretPassword
+      #---------------------------------------------------------------
+      # https://github.com/wekan/wekan/issues/3585#issuecomment-1021522132
+      # Add more Node heap, this is done by default at Dockerfile:
+      #   - NODE_OPTIONS="--max_old_space_size=4096"
+      # Add more stack, this is done at Dockerfile:
+      #   bash -c "ulimit -s 65500; exec node --stack-size=65500 main.js"
       #---------------------------------------------------------------
       # ==== OPTIONAL: MONGO OPLOG SETTINGS =====
       # https://github.com/wekan/wekan-mongodb/issues/2#issuecomment-378343587
@@ -217,6 +245,10 @@ services:
       # ==== NUMBER OF SEARCH RESULTS PER PAGE BY DEFAULT ====
       #- RESULTS_PER_PAGE=20
       #---------------------------------------------------------------
+      # ==== AFTER OIDC LOGIN, ADD USERS AUTOMATICALLY TO THIS BOARD ID ====
+      # https://github.com/wekan/wekan/pull/5098
+      #- DEFAULT_BOARD_ID=abcd1234
+      #---------------------------------------------------------------
       # ==== WEKAN API AND EXPORT BOARD ====
       # Wekan Export Board works when WITH_API=true.
       # https://github.com/wekan/wekan/wiki/REST-API
@@ -234,9 +266,10 @@ services:
       #- ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
       #- ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
       #---------------------------------------------------------------
-      # ==== STORE ATTACHMENT ON SERVER FILESYSTEM INSTEAD OF MONGODB ====
-      # https://github.com/wekan/wekan/pull/2603
-      #- ATTACHMENTS_STORE_PATH = <pathname> # pathname can be relative or fullpath
+      # ==== ACCOUNT OPTIONS ====
+      # https://docs.meteor.com/api/accounts-multi.html#AccountsCommon-config
+      # Defaults below. Uncomment to change. wekan/server/accounts-common.js
+      # - ACCOUNTS_COMMON_LOGIN_EXPIRATION_IN_DAYS=90
       #---------------------------------------------------------------
       # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
       # https://github.com/wekan/wekan/pull/2560
@@ -246,10 +279,20 @@ services:
       # https://github.com/wekan/wekan/issues/2518
       - CARD_OPENED_WEBHOOK_ENABLED=false
       #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded attachments ====
+      #-ATTACHMENTS_UPLOAD_EXTERNAL_PROGRAM=/usr/local/bin/avscan {file}
+      #-ATTACHMENTS_UPLOAD_MIME_TYPES=image/*,text/*
+      #-ATTACHMENTS_UPLOAD_MAX_SIZE=5000000
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded avatars ====
+      #-AVATARS_UPLOAD_EXTERNAL_PROGRAM=/usr/local/bin/avscan {file}
+      #-AVATARS_UPLOAD_MIME_TYPES=image/*
+      #-AVATARS_UPLOAD_MAX_SIZE=500000
+      #---------------------------------------------------------------
       # ==== Allow to shrink attached/pasted image ====
       # https://github.com/wekan/wekan/pull/2544
-      #-MAX_IMAGE_PIXEL=1024
-      #-IMAGE_COMPRESS_RATIO=80
+      #- MAX_IMAGE_PIXEL=1024
+      #- IMAGE_COMPRESS_RATIO=80
       #---------------------------------------------------------------
       # ==== NOTIFICATION TRAY AFTER READ DAYS BEFORE REMOVE =====
       # Number of days after a notification is read before we remove it.
@@ -316,12 +359,20 @@ services:
       # When browser policy is enabled, HTML code at this Trusted URL can have iframe that embeds Wekan inside.
       #- TRUSTED_URL=https://intra.example.com
       #-----------------------------------------------------------------
+      # ==== METRICS ALLOWED IP ADDRESSES ====
+      # https://github.com/wekan/wekan/wiki/Metrics
+      #- METRICS_ALLOWED_IP_ADDRESSES=192.168.0.100,192.168.0.200
+      #-----------------------------------------------------------------
       # ==== OUTGOING WEBHOOKS ====
       # What to send to Outgoing Webhook, or leave out. If commented out the default values will be: cardId,listId,oldListId,boardId,comment,user,card,commentId,swimlaneId,customerField,customFieldValue
       #- WEBHOOKS_ATTRIBUTES=cardId,listId,oldListId,boardId,comment,user,card,commentId
       #-----------------------------------------------------------------
       # ==== Debug OIDC OAuth2 etc ====
       #- DEBUG=true
+      #---------------------------------------------
+      # ==== AUTOLOGIN WITH OIDC/OAUTH2 ====
+      # https://github.com/wekan/wekan/wiki/autologin
+      #- OIDC_REDIRECTION_ENABLED=true
       #-----------------------------------------------------------------
       # ==== OAUTH2 ORACLE on premise identity manager OIM ====
       #- ORACLE_OIM_ENABLED=true
@@ -434,6 +485,7 @@ services:
       # Note: Do not add single quotes '' to variables. Having spaces still works without quotes where required.
       #
       # The default authentication method used if a user does not exist to create and authenticate. Can be set as ldap.
+      # (this is set properly in the Admin Panel, changing this item does not remove Password login option)
       #- DEFAULT_AUTHENTICATION_METHOD=ldap
       #
       # Enable or not the connection by the LDAP
@@ -521,7 +573,7 @@ services:
       # At which interval does the background task sync.
       # The format must be as specified in:
       # https://bunkat.github.io/later/parsers.html#text
-      #- LDAP_BACKGROUND_SYNC_INTERVAL='every 1 hour'
+      #- LDAP_BACKGROUND_SYNC_INTERVAL=every 1 hour
       #
       #- LDAP_BACKGROUND_SYNC_KEEP_EXISTANT_USERS_UPDATED=false
       #
@@ -661,7 +713,7 @@ services:
       - wekandb
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
+      - wekan-files:/data:rw
 
 #---------------------------------------------------------------------------------
 # ==== OPTIONAL: SHARE DATABASE TO OFFICE LAN AND REMOTE VPN ====
@@ -713,6 +765,8 @@ services:
 ##     - ./nginx/ssl/pphrase:/etc/nginx/conf.d/ssl/pphrase:ro
 
 volumes:
+  wekan-files:
+    driver: local
   wekan-db:
     driver: local
   wekan-db-dump:

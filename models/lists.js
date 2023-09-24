@@ -1,3 +1,4 @@
+import { ReactiveCache } from '/imports/reactiveCache';
 import { ALLOWED_COLORS } from '/config/const';
 
 Lists = new Mongo.Collection('lists');
@@ -160,13 +161,13 @@ Lists.attachSchema(
 
 Lists.allow({
   insert(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   update(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   remove(userId, doc) {
-    return allowIsBoardMemberCommentOnly(userId, Boards.findOne(doc.boardId));
+    return allowIsBoardMemberCommentOnly(userId, ReactiveCache.getBoard(doc.boardId));
   },
   fetch: ['boardId'],
 });
@@ -179,7 +180,7 @@ Lists.helpers({
     this.swimlaneId = swimlaneId;
 
     let _id = null;
-    const existingListWithSameName = Lists.findOne({
+    const existingListWithSameName = ReactiveCache.getList({
       boardId,
       title: this.title,
       archived: false,
@@ -193,7 +194,7 @@ Lists.helpers({
     }
 
     // Copy all cards in list
-    Cards.find({
+    ReactiveCache.getCards({
       swimlaneId: oldSwimlaneId,
       listId: oldId,
       archived: false,
@@ -203,7 +204,7 @@ Lists.helpers({
   },
 
   move(boardId, swimlaneId) {
-    const boardList = Lists.findOne({
+    const boardList = ReactiveCache.getList({
       boardId,
       title: this.title,
       archived: false,
@@ -237,7 +238,8 @@ Lists.helpers({
       archived: false,
     };
     if (swimlaneId) selector.swimlaneId = swimlaneId;
-    return Cards.find(Filter.mongoSelector(selector), { sort: ['sort'] });
+    const ret = ReactiveCache.getCards(Filter.mongoSelector(selector), { sort: ['sort'] });
+    return ret;
   },
 
   cardsUnfiltered(swimlaneId) {
@@ -246,19 +248,21 @@ Lists.helpers({
       archived: false,
     };
     if (swimlaneId) selector.swimlaneId = swimlaneId;
-    return Cards.find(selector, { sort: ['sort'] });
+    const ret = ReactiveCache.getCards(selector, { sort: ['sort'] });
+    return ret;
   },
 
   allCards() {
-    return Cards.find({ listId: this._id });
+    const ret = ReactiveCache.getCards({ listId: this._id });
+    return ret;
   },
 
   board() {
-    return Boards.findOne(this.boardId);
+    return ReactiveCache.getBoard(this.boardId);
   },
 
   getWipLimit(option) {
-    const list = Lists.findOne({ _id: this._id });
+    const list = ReactiveCache.getList(this._id);
     if (!list.wipLimit) {
       // Necessary check to avoid exceptions for the case where the doc doesn't have the wipLimit field yet set
       return 0;
@@ -283,11 +287,11 @@ Lists.helpers({
   },
 
   absoluteUrl() {
-    const card = Cards.findOne({ listId: this._id });
+    const card = ReactiveCache.getCard({ listId: this._id });
     return card && card.absoluteUrl();
   },
   originRelativeUrl() {
-    const card = Cards.findOne({ listId: this._id });
+    const card = ReactiveCache.getCard({ listId: this._id });
     return card && card.originRelativeUrl();
   },
   remove() {
@@ -345,8 +349,19 @@ Lists.mutations({
   },
 });
 
+Lists.userArchivedLists = userId => {
+  return ReactiveCache.getLists({
+    boardId: { $in: Boards.userBoardIds(userId, null) },
+    archived: true,
+  })
+};
+
+Lists.userArchivedListIds = () => {
+  return Lists.userArchivedLists().map(list => { return list._id; });
+};
+
 Lists.archivedLists = () => {
-  return Lists.find({ archived: true });
+  return ReactiveCache.getLists({ archived: true });
 };
 
 Lists.archivedListIds = () => {
@@ -362,12 +377,12 @@ Meteor.methods({
     if (limit === 0) {
       limit = 1;
     }
-    Lists.findOne({ _id: listId }).setWipLimit(limit);
+    ReactiveCache.getList(listId).setWipLimit(limit);
   },
 
   enableWipLimit(listId) {
     check(listId, String);
-    const list = Lists.findOne({ _id: listId });
+    const list = ReactiveCache.getList(listId);
     if (list.getWipLimit('value') === 0) {
       list.setWipLimit(1);
     }
@@ -376,14 +391,14 @@ Meteor.methods({
 
   enableSoftLimit(listId) {
     check(listId, String);
-    const list = Lists.findOne({ _id: listId });
+    const list = ReactiveCache.getList(listId);
     list.toggleSoftLimit(!list.getWipLimit('soft'));
   },
 
   myLists() {
     // my lists
     return _.uniq(
-      Lists.find(
+      ReactiveCache.getLists(
         {
           boardId: { $in: Boards.userBoardIds(this.userId) },
           archived: false,
@@ -392,7 +407,6 @@ Meteor.methods({
           fields: { title: 1 },
         },
       )
-        .fetch()
         .map(list => {
           return list.title;
         }),
@@ -404,9 +418,9 @@ Lists.hookOptions.after.update = { fetchPrevious: false };
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
-    Lists._collection._ensureIndex({ modifiedAt: -1 });
-    Lists._collection._ensureIndex({ boardId: 1 });
-    Lists._collection._ensureIndex({ archivedAt: -1 });
+    Lists._collection.createIndex({ modifiedAt: -1 });
+    Lists._collection.createIndex({ boardId: 1 });
+    Lists._collection.createIndex({ archivedAt: -1 });
   });
 
   Lists.after.insert((userId, doc) => {
@@ -423,7 +437,7 @@ if (Meteor.isServer) {
   });
 
   Lists.before.remove((userId, doc) => {
-    const cards = Cards.find({ listId: doc._id });
+    const cards = ReactiveCache.getCards({ listId: doc._id });
     if (cards) {
       cards.forEach(card => {
         Cards.remove(card._id);
@@ -467,12 +481,12 @@ if (Meteor.isServer) {
    */
   JsonRoutes.add('GET', '/api/boards/:boardId/lists', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
 
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Lists.find({ boardId: paramBoardId, archived: false }).map(
+        data: ReactiveCache.getLists({ boardId: paramBoardId, archived: false }).map(
           function(doc) {
             return {
               _id: doc._id,
@@ -502,12 +516,12 @@ if (Meteor.isServer) {
     res,
   ) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramListId = req.params.listId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Lists.findOne({
+        data: ReactiveCache.getList({
           _id: paramListId,
           boardId: paramBoardId,
           archived: false,
@@ -531,13 +545,13 @@ if (Meteor.isServer) {
    */
   JsonRoutes.add('POST', '/api/boards/:boardId/lists', function(req, res) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
-      const board = Boards.findOne(paramBoardId);
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
+      const board = ReactiveCache.getBoard(paramBoardId);
       const id = Lists.insert({
         title: req.body.title,
         boardId: paramBoardId,
-        sort: board.lists().count(),
+        sort: board.lists().length,
       });
       JsonRoutes.sendResult(res, {
         code: 200,
@@ -569,9 +583,9 @@ if (Meteor.isServer) {
     res,
   ) {
     try {
-      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const paramListId = req.params.listId;
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       Lists.remove({ _id: paramListId, boardId: paramBoardId });
       JsonRoutes.sendResult(res, {
         code: 200,

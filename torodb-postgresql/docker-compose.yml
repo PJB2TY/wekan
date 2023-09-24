@@ -108,6 +108,8 @@ services:
       - TORODB_BACKEND_USER=wekan
       - TORODB_BACKEND_PASSWORD=wekan
       - DEBUG
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
   postgres:
     image: quay.io/wekan/postgres:9.6
     networks:
@@ -116,6 +118,8 @@ services:
       - POSTGRES_PASSWORD=wekan
     ports:
       - "5432:5432"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
   mongodb:
     image: mongo:3.2
     networks:
@@ -136,18 +140,44 @@ services:
             rs.initiate({_id:"rs1",members:[{_id:0,host:"mongodb:27017"}]});
         ' 1>/dev/null 2>&1 &
         mongod --replSet rs1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - mongodb:/data/db
+      - mongodb-dump:/dump
   wekan:
     image: quay.io/wekan/wekan
     container_name: wekan-app
     restart: always
     networks:
       - wekan-tier
+    #-------------------------------------------------------------------------------------
+    # ==== BUILD wekan-app DOCKER CONTAINER FROM SOURCE, if you uncomment these ====
+    # ==== and use commands: docker-compose up -d --build
+    # ==== Dockerfile and source is at parent directory ..
+    #build:
+    #  context: ..
+    #  dockerfile: Dockerfile
+    #-------------------------------------------------------------------------------------
     ports:
       # Docker outsideport:insideport. Do not add anything extra here.
       # For example, if you want to have wekan on port 3001,
       # use 3001:8080 . Do not add any extra address etc here, that way it does not work.
       - 80:8080
     environment:
+      #-----------------------------------------------------------------
+      # ==== WRITEABLE PATH FOR FILE UPLOADS ====
+      - WRITABLE_PATH=/data
+      #-----------------------------------------------------------------
+      # ==== AWS S3 FOR FILES ====
+      # Any region. For example:
+      #   us-standard,us-west-1,us-west-2,
+      #   eu-west-1,eu-central-1,
+      #   ap-southeast-1,ap-northeast-1,sa-east-1
+      #
+      #- S3='{"s3":{"key": "xxx", "secret": "xxx", "bucket": "xxx", "region": "xxx"}}'
+      #-----------------------------------------------------------------
+      # ==== MONGO_URL ====
       - MONGO_URL=mongodb://mongodb:27017/wekan
       #---------------------------------------------------------------
       # ==== ROOT_URL SETTING ====
@@ -163,16 +193,24 @@ services:
       #  - http://192.168.1.100    <=== using at local LAN
       - ROOT_URL=http://localhost  #   <=== using only at same laptop/desktop where Wekan is installed
       # ==== EMAIL SETTINGS ====
-      # Email settings are required in both MAIL_URL and Admin Panel,
+      # Email settings are only at MAIL_URL and MAIL_FROM.
+      # Admin Panel has test button, but it's not used for settings.
       #   see https://github.com/wekan/wekan/wiki/Troubleshooting-Mail
       #   For SSL in email, change smtp:// to smtps://
       # NOTE: Special characters need to be url-encoded in MAIL_URL.
       #       You can encode those characters for example at: https://www.urlencoder.org
       - MAIL_URL=smtp://user:pass@mailserver.example.com:25/
       - MAIL_FROM='Example Wekan Support <support@example.com>'
+      # Currently MAIL_SERVICE is not in use.
       #- MAIL_SERVICE=Outlook365
       #- MAIL_SERVICE_USER=firstname.lastname@hotmail.com
       #- MAIL_SERVICE_PASSWORD=SecretPassword
+      #---------------------------------------------------------------
+      # https://github.com/wekan/wekan/issues/3585#issuecomment-1021522132
+      # Add more Node heap, this is done by default at Dockerfile:
+      #   - NODE_OPTIONS="--max_old_space_size=4096"
+      # Add more stack, this is done at Dockerfile:
+      #   bash -c "ulimit -s 65500; exec node --stack-size=65500 main.js"
       #---------------------------------------------------------------
       # ==== OPTIONAL: MONGO OPLOG SETTINGS =====
       # https://github.com/wekan/wekan-mongodb/issues/2#issuecomment-378343587
@@ -223,6 +261,10 @@ services:
       # If you disable Wekan API with false, Export Board does not work.
       - WITH_API=true
       #---------------------------------------------------------------
+      # ==== AFTER OIDC LOGIN, ADD USERS AUTOMATICALLY TO THIS BOARD ID ====
+      # https://github.com/wekan/wekan/pull/5098
+      #- DEFAULT_BOARD_ID=abcd1234
+      #---------------------------------------------------------------
       # ==== PASSWORD BRUTE FORCE PROTECTION ====
       #https://atmospherejs.com/lucasantoniassi/accounts-lockout
       #Defaults below. Uncomment to change. wekan/server/accounts-lockout.js
@@ -233,9 +275,10 @@ services:
       #- ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
       #- ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
       #---------------------------------------------------------------
-      # ==== STORE ATTACHMENT ON SERVER FILESYSTEM INSTEAD OF MONGODB ====
-      # https://github.com/wekan/wekan/pull/2603
-      #- ATTACHMENTS_STORE_PATH = <pathname> # pathname can be relative or fullpath
+      # ==== ACCOUNT OPTIONS ====
+      # https://docs.meteor.com/api/accounts-multi.html#AccountsCommon-config
+      # Defaults below. Uncomment to change. wekan/server/accounts-common.js
+      # - ACCOUNTS_COMMON_LOGIN_EXPIRATION_IN_DAYS=90
       #---------------------------------------------------------------
       # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
       # https://github.com/wekan/wekan/pull/2560
@@ -244,6 +287,16 @@ services:
       # ==== CARD OPENED, SEND WEBHOOK MESSAGE ====
       # https://github.com/wekan/wekan/issues/2518
       - CARD_OPENED_WEBHOOK_ENABLED=false
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded attachments ====
+      #-ATTACHMENTS_UPLOAD_EXTERNAL_PROGRAM=/usr/local/bin/avscan {file}
+      #-ATTACHMENTS_UPLOAD_MIME_TYPES=image/*,text/*
+      #-ATTACHMENTS_UPLOAD_MAX_SIZE=5000000
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded avatars ====
+      #-AVATARS_UPLOAD_EXTERNAL_PROGRAM=/usr/local/bin/avscan {file}
+      #-AVATARS_UPLOAD_MIME_TYPES=image/*
+      #-AVATARS_UPLOAD_MAX_SIZE=500000
       #---------------------------------------------------------------
       # ==== Allow to shrink attached/pasted image ====
       # https://github.com/wekan/wekan/pull/2544
@@ -307,6 +360,10 @@ services:
       # example: MATOMO_WITH_USERNAME=true
       #- MATOMO_WITH_USERNAME=false
       #-----------------------------------------------------------------
+      # ==== METRICS ALLOWED IP ADDRESSES ====
+      # https://github.com/wekan/wekan/wiki/Metrics
+      #- METRICS_ALLOWED_IP_ADDRESSES=192.168.0.100,192.168.0.200
+      #-----------------------------------------------------------------
       # ==== BROWSER POLICY AND TRUSTED IFRAME URL ====
       # Enable browser policy and allow one trusted URL that can have iframe that has Wekan embedded inside.
       # Setting this to false is not recommended, it also disables all other browser policy protections
@@ -320,6 +377,10 @@ services:
       # example: WEBHOOKS_ATTRIBUTES=cardId,listId,oldListId,boardId,comment,user,card,commentId
       #- WEBHOOKS_ATTRIBUTES=
       #-----------------------------------------------------------------
+      # ==== AUTOLOGIN WITH OIDC/OAUTH2 ====
+      # https://github.com/wekan/wekan/wiki/autologin
+      #- OIDC_REDIRECTION_ENABLED=true
+      #---------------------------------------------
       # ==== OAUTH2 ORACLE on premise identity manager OIM ====
       #- ORACLE_OIM_ENABLED=true
       #-----------------------------------------------------------------
@@ -602,6 +663,9 @@ services:
 
     depends_on:
       - mongodb
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - wekan-files:/data:rw
 
 #---------------------------------------------------------------------------------
 # ==== OPTIONAL: SHARE DATABASE TO OFFICE LAN AND REMOTE VPN ====
@@ -630,6 +694,8 @@ services:
 #---------------------------------------------------------------------------------
 
 volumes:
+  wekan-files:
+    driver: local
   mongodb:
     driver: local
   mongodb-dump:

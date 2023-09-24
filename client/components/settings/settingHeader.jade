@@ -16,6 +16,14 @@ template(name="settingHeaderBar")
         i.fa(class="fa-list")
         span {{_ 'reports'}}
 
+      a.setting-header-btn.informations(href="{{pathFor 'attachments'}}")
+        i.fa(class="fa-paperclip")
+        span {{_ 'attachments'}}
+
+      a.setting-header-btn.informations(href="{{pathFor 'translation'}}")
+        i.fa(class="fa-font")
+        span {{_ 'translation'}}
+
       a.setting-header-btn.informations(href="{{pathFor 'information'}}")
         i.fa(class="fa-info-circle")
         span {{_ 'info'}}

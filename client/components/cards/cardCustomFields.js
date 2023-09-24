@@ -1,5 +1,8 @@
+import moment from 'moment/min/moment-with-locales';
+import { TAPi18n } from '/imports/i18n';
 import { DatePicker } from '/client/lib/datepicker';
 import Cards from '/models/cards';
+import { CustomFieldStringTemplate } from '/client/lib/customFields'
 
 Template.cardCustomFieldsPopup.helpers({
   hasCustomField() {
@@ -33,14 +36,6 @@ const CardCustomField = BlazeComponent.extendComponent({
     const self = this;
     self.card = Utils.getCurrentCard();
     self.customFieldId = this.data()._id;
-  },
-
-  canModifyCard() {
-    return (
-      Meteor.user() &&
-      Meteor.user().isBoardMember() &&
-      !Meteor.user().isCommentOnly()
-    );
   },
 });
 CardCustomField.register('cardCustomField');
@@ -243,21 +238,18 @@ CardCustomField.register('cardCustomField');
 }.register('cardCustomField-dropdown'));
 
 // cardCustomField-stringtemplate
-(class extends CardCustomField {
+class CardCustomFieldStringTemplate extends CardCustomField {
   onCreated() {
     super.onCreated();
 
-    this.stringtemplateFormat = this.data().definition.settings.stringtemplateFormat;
-    this.stringtemplateSeparator = this.data().definition.settings.stringtemplateSeparator;
+    this.customField = new CustomFieldStringTemplate(this.data().definition);
 
     this.stringtemplateItems = new ReactiveVar(this.data().value ?? []);
   }
 
   formattedValue() {
-    return (this.data().value ?? [])
-      .filter(value => !!value.trim())
-      .map(value => this.stringtemplateFormat.replace(/%\{value\}/gi, value))
-      .join(this.stringtemplateSeparator ?? '');
+    const ret = this.customField.getFormattedValue(this.data().value);
+    return ret;
   }
 
   getItems() {
@@ -271,7 +263,7 @@ CardCustomField.register('cardCustomField');
       {
         'submit .js-card-customfield-stringtemplate'(event) {
           event.preventDefault();
-          const items = this.getItems();
+          const items = this.stringtemplateItems.get();
           this.card.setCustomField(this.customFieldId, items);
         },
 
@@ -279,9 +271,7 @@ CardCustomField.register('cardCustomField');
           if (event.keyCode === 13) {
             event.preventDefault();
 
-            if (event.metaKey || event.ctrlKey) {
-              this.find('button[type=submit]').click();
-            } else if (event.target.value.trim()) {
+            if (event.target.value.trim() || event.metaKey || event.ctrlKey) {
               const inputLast = this.find('input.last');
 
               let items = this.getItems();
@@ -307,6 +297,9 @@ CardCustomField.register('cardCustomField');
 
               this.stringtemplateItems.set(items);
             }
+            if (event.metaKey || event.ctrlKey) {
+              this.find('button[type=submit]').click();
+            }
           }
         },
 
@@ -327,4 +320,5 @@ CardCustomField.register('cardCustomField');
       },
     ];
   }
-}.register('cardCustomField-stringtemplate'));
+}
+CardCustomFieldStringTemplate.register('cardCustomField-stringtemplate');

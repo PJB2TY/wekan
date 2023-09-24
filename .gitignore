@@ -1,5 +1,5 @@
 *~
-*.swp
+*.sw*
 .meteor-spk
 *.sublime-workspace
 tmp/
@@ -38,3 +38,4 @@ ehthumbs.db
 # Helm chart
 # Chart dependencies
 /helm/wekan/**/*.tgz
+/helm/wekan/charts

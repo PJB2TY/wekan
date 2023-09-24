@@ -64,6 +64,11 @@ template(name="webhookSettings")
 template(name="general")
   ul#registration-setting.setting-detail
     li
+      a.flex.js-toggle-forgot-password
+        .materialCheckBox(class="{{#if currentSetting.disableForgotPassword}}is-checked{{/if}}")
+
+        span {{_ 'disable-forgot-password'}}
+    li
       a.flex.js-toggle-registration
         .materialCheckBox(class="{{#if currentSetting.disableRegistration}}is-checked{{/if}}")
 
@@ -166,15 +171,15 @@ template(name='announcementSettings')
   ul#announcement-setting.setting-detail
     li
       a.flex.js-toggle-activemessage
-        .materialCheckBox(class="{{#if currentSetting.enabled}}is-checked{{/if}}")
+        .materialCheckBox(class="{{#if currentAnnouncements.enabled}}is-checked{{/if}}")
 
         span {{_ 'admin-announcement-active'}}
     li
-      .admin-announcement(class="{{#if currentSetting.enabled}}{{else}}hide{{/if}}")
+      .admin-announcement(class="{{#if currentAnnouncements.enabled}}{{else}}hide{{/if}}")
         ul
           li
             .title {{_ 'admin-announcement-title'}}
-            textarea#admin-announcement.wekan-form-control= currentSetting.body
+            textarea#admin-announcement.wekan-form-control= currentAnnouncements.body
           li
             button.js-announcement-save.primary {{_ 'save'}}
 
@@ -184,6 +189,14 @@ template(name='layoutSettings')
       .title {{_ 'oidc-button-text'}}
       .form-group
         input.wekan-form-control#oidcBtnTextvalue(type="text", placeholder="" value="{{currentSetting.oidcBtnText}}")
+    li.layout-form
+      .title {{_ 'can-invite-if-same-mailDomainName'}}
+      .form-group
+        input.wekan-form-control#mailDomainNamevalue(type="text", placeholder="" value="{{currentSetting.mailDomainName}}")
+    li.layout-form
+      .title {{_ 'custom-legal-notice-link-url'}}
+      .form-group
+        input.wekan-form-control#legalNoticevalue(type="text", placeholder="" value="{{currentSetting.legalNotice}}")
     li.layout-form
       .title {{_ 'display-authentication-method'}}
       .form-group.flex
@@ -217,6 +230,10 @@ template(name='layoutSettings')
       .form-group
         input.wekan-form-control#custom-login-logo-link-url(type="text", placeholder="" value="{{currentSetting.customLoginLogoLinkUrl}}")
     li.layout-form
+      .title {{_ 'custom-help-link-url'}}
+      .form-group
+        input.wekan-form-control#custom-help-link-url(type="text", placeholder="" value="{{currentSetting.customHelpLinkUrl}}")
+    li.layout-form
       .title {{_ 'text-below-custom-login-logo'}}
       .form-group
         textarea#text-below-custom-login-logo.wekan-form-control= currentSetting.textBelowCustomLoginLogo
@@ -236,6 +253,20 @@ template(name='layoutSettings')
       .title {{_ 'automatic-linked-url-schemes'}}
       .form-group
         textarea#automatic-linked-url-schemes.wekan-form-control= currentSetting.automaticLinkedUrlSchemes
+    li.layout-form
+      .title {{_ 'hide-card-counter-list'}}
+      .form-group.flex
+        input.wekan-form-control#hide-card-counter-list(type="radio" name="hideCardCounterList" value="true" checked="{{#if currentSetting.hideCardCounterList}}checked{{/if}}")
+        span {{_ 'yes'}}
+        input.wekan-form-control#hide-card-counter-list(type="radio" name="hideCardCounterList" value="false" checked="{{#unless currentSetting.hideCardCounterList}}checked{{/unless}}")
+        span {{_ 'no'}}
+    li.layout-form
+      .title {{_ 'hide-board-member-list'}}
+      .form-group.flex
+        input.wekan-form-control#hide-board-member-list(type="radio" name="hideBoardMemberList" value="true" checked="{{#if currentSetting.hideBoardMemberList}}checked{{/if}}")
+        span {{_ 'yes'}}
+        input.wekan-form-control#hide-board-member-list(type="radio" name="hideBoardMemberList" value="false" checked="{{#unless currentSetting.hideBoardMemberList}}checked{{/unless}}")
+        span {{_ 'no'}}
     li
       button.js-save-layout.primary {{_ 'save'}}
 

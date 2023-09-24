@@ -1,14 +1,11 @@
-BlazeLayout.setRoot('body');
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
 
-const i18nTagToT9n = i18nTag => {
-  // t9n/i18n tags are same now, see: https://github.com/softwarerero/meteor-accounts-t9n/pull/129
-  // but we keep this conversion function here, to be aware that that they are different system.
-  return i18nTag;
-};
+BlazeLayout.setRoot('body');
 
 let alreadyCheck = 1;
 let isCheckDone = false;
-
+let counter = 0;
 const validator = {
   set(obj, prop, value) {
     if (prop === 'state' && value !== 'signIn') {
@@ -23,59 +20,96 @@ const validator = {
   },
 };
 
-// let isSettingDatabaseFctCallDone = false;
-
-Template.userFormsLayout.onCreated(function() {
+Template.userFormsLayout.onCreated(function () {
   const templateInstance = this;
   templateInstance.currentSetting = new ReactiveVar();
   templateInstance.isLoading = new ReactiveVar(false);
 
-  Meteor.subscribe('setting', {
-    onReady() {
-      templateInstance.currentSetting.set(Settings.findOne());
-      let currSetting = templateInstance.currentSetting.curValue;
-      let oidcBtnElt = $("#at-oidc");
-      if(currSetting && currSetting !== undefined && currSetting.oidcBtnText !== undefined && oidcBtnElt != null && oidcBtnElt != undefined){
-        let htmlvalue = "<i class='fa fa-oidc'></i>" + currSetting.oidcBtnText;
-        oidcBtnElt.html(htmlvalue);
+  if (!ReactiveCache.getCurrentUser()?.profile) {
+    Meteor.call('isOidcRedirectionEnabled', (_, result) => {
+      if (result) {
+        AccountsTemplates.options.socialLoginStyle = 'redirect';
+        options = {
+          loginStyle: AccountsTemplates.options.socialLoginStyle,
+        };
+        Meteor.loginWithOidc(options);
       }
+    });
 
-      // isSettingDatabaseFctCallDone = true;
-      if(currSetting && currSetting !== undefined && currSetting.customLoginLogoImageUrl !== undefined)
-        document.getElementById("isSettingDatabaseCallDone").style.display = 'none';
-      else
-        document.getElementById("isSettingDatabaseCallDone").style.display = 'block';
-      return this.stop();
-    },
-  });
-  Meteor.call('isPasswordLoginDisabled', (_, result) => {
-    if (result) {
-      $('.at-pwd-form').hide();
-    }
-  });
+    Meteor.subscribe('setting', {
+      onReady() {
+        templateInstance.currentSetting.set(ReactiveCache.getCurrentSetting());
+        return this.stop();
+      },
+    });
+  }
 });
 
 Template.userFormsLayout.onRendered(() => {
-  AccountsTemplates.state.form.keys = new Proxy(
-    AccountsTemplates.state.form.keys,
-    validator,
-  );
+  Meteor.call('getAuthenticationsEnabled', (_, result) => {
+    let enabledAuthenticationMethods = [ 'password' ]; // we show/hide this based on isPasswordLoginEnabled
 
-  const i18nTag = navigator.language;
-  if (i18nTag) {
-    T9n.setLanguage(i18nTagToT9n(i18nTag));
-  }
-  EscapeActions.executeAll();
+    if (result) {
+      Object.keys(result).forEach((m) => {
+        if (result[m]) enabledAuthenticationMethods.push(m);
+      });
+    }
+
+    Meteor.call('isPasswordLoginEnabled', (_, result) => {
+      if (result) {
+        $('.at-pwd-form').show();
+      }
+    });
+
+    Meteor.call('isDisableRegistration', (_, result) => {
+      if (result) {
+        $('.at-signup-link').hide();
+      }
+    });
+
+    Meteor.call('isDisableForgotPassword', (_, result) => {
+      if (result) {
+        $('.at-pwd-link').hide();
+      }
+    });
+
+    if (enabledAuthenticationMethods.indexOf('oauth2') !== -1) {
+      // TODO find better way to run this code once the oauth2 UI is injected in the DOM
+      (function waitForElementAndShow() {
+        if (!$('.at-oauth')[0]) return setTimeout(waitForElementAndShow, 100);
+        $('.at-oauth').show();
+      })();
+    }
+
+    AccountsTemplates.state.form.keys = new Proxy(
+      AccountsTemplates.state.form.keys,
+      validator,
+    );
+    EscapeActions.executeAll();
+  });
 });
 
 Template.userFormsLayout.helpers({
-  currentSetting() {
-    return Template.instance().currentSetting.get();
+  isLegalNoticeLinkExist() {
+    const currSet = Template.instance().currentSetting.get();
+    if (currSet && currSet !== undefined && currSet != null) {
+      return currSet.legalNotice !== undefined && currSet.legalNotice.trim() != "";
+    }
+    else
+      return false;
   },
 
-  // isSettingDatabaseCallDone(){
-  //   return isSettingDatabaseFctCallDone;
-  // },
+  getLegalNoticeWithWritTraduction() {
+    let spanLegalNoticeElt = $("#legalNoticeSpan");
+    if (spanLegalNoticeElt != null && spanLegalNoticeElt != undefined) {
+      spanLegalNoticeElt.html(TAPi18n.__('acceptance_of_our_legalNotice', {}));
+    }
+    let atLinkLegalNoticeElt = $("#legalNoticeAtLink");
+    if (atLinkLegalNoticeElt != null && atLinkLegalNoticeElt != undefined) {
+      atLinkLegalNoticeElt.html(TAPi18n.__('legalNotice', {}));
+    }
+    return true;
+  },
 
   isLoading() {
     return Template.instance().isLoading.get();
@@ -90,87 +124,27 @@ Template.userFormsLayout.helpers({
   },
 
   languages() {
-    return _.map(TAPi18n.getLanguages(), (lang, code) => {
-      const tag = code;
-      let name = lang.name;
-      if (lang.name === 'br') {
-        name = 'Brezhoneg';
-      } else if (lang.name === 'ar-EG') {
-        // ar-EG = Arabic (Egypt), simply Masri (مَصرى, [ˈmɑsˤɾi], Egyptian, Masr refers to Cairo)
-        name = 'مَصرى';
-      } else if (lang.name === 'de-CH') {
-        name = 'Deutsch (Schweiz)';
-      } else if (lang.name === 'fa-IR') {
-        // fa-IR = Persian (Iran)
-        name = 'فارسی/پارسی (ایران‎)';
-      } else if (lang.name === 'fr-BE') {
-        name = 'Français (Belgique)';
-      } else if (lang.name === 'fr-CA') {
-        name = 'Français (Canada)';
-      } else if (lang.name === 'fr-CH') {
-        name = 'Français (Schweiz)';
-      } else if (lang.name === 'ig') {
-        name = 'Igbo';
-      } else if (lang.name === 'lv') {
-        name = 'Latviešu';
-      } else if (lang.name === 'latviešu valoda') {
-        name = 'Latviešu';
-      } else if (lang.name === 'en-IT') {
-        name = 'English (Italy)';
-      } else if (lang.name === 'Español') {
-        name = 'español';
-      } else if (lang.name === 'es_419') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'es-419') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'Español de América Latina') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'es-LA') {
-        name = 'español de América Latina';
-      } else if (lang.name === 'Español de Argentina') {
-        name = 'español de Argentina';
-      } else if (lang.name === 'Español de Chile') {
-        name = 'español de Chile';
-      } else if (lang.name === 'Español de Colombia') {
-        name = 'español de Colombia';
-      } else if (lang.name === 'Español de México') {
-        name = 'español de México';
-      } else if (lang.name === 'es-PY') {
-        name = 'español de Paraguayo';
-      } else if (lang.name === 'Español de Paraguayo') {
-        name = 'español de Paraguayo';
-      } else if (lang.name === 'Español de Perú') {
-        name = 'español de Perú';
-      } else if (lang.name === 'Español de Puerto Rico') {
-        name = 'español de Puerto Rico';
-      } else if (lang.name === 'oc') {
-        name = 'Occitan';
-      } else if (lang.name === 'st') {
-        name = 'Sãotomense';
-      } else if (lang.name === '繁体中文（台湾）') {
-        name = '繁體中文（台灣）';
-      }
-      return { tag, name };
-    }).sort(function(a, b) {
-      if (a.name === b.name) {
-        return 0;
-      } else {
-        return a.name > b.name ? 1 : -1;
-      }
-    });
+    return TAPi18n.getSupportedLanguages()
+      .map(({ tag, name }) => ({ tag: tag, name }))
+      .sort((a, b) => {
+        if (a.name === b.name) {
+          return 0;
+        } else {
+          return a.name > b.name ? 1 : -1;
+        }
+      });
   },
 
   isCurrentLanguage() {
-    const t9nTag = i18nTagToT9n(this.tag);
-    const curLang = T9n.getLanguage() || 'en';
-    return t9nTag === curLang;
+    const curLang = TAPi18n.getLanguage();
+    return this.tag === curLang;
   },
 });
 
 Template.userFormsLayout.events({
   'change .js-userform-set-language'(event) {
-    const i18nTag = $(event.currentTarget).val();
-    T9n.setLanguage(i18nTagToT9n(i18nTag));
+    const tag = $(event.currentTarget).val();
+    TAPi18n.setLanguage(tag);
     event.preventDefault();
   },
   'click #at-btn'(event, templateInstance) {
@@ -180,39 +154,43 @@ Template.userFormsLayout.events({
         templateInstance.isLoading.set(false);
       });
     }
+    isCheckDone = false;
   },
-  'DOMSubtreeModified #at-oidc'(event){
-    if(alreadyCheck <= 2){
-      let currSetting = Settings.findOne();
+  'click #at-signUp'(event, templateInstance) {
+    isCheckDone = false;
+  },
+  'DOMSubtreeModified #at-oidc'(event) {
+    if (alreadyCheck <= 2) {
+      let currSetting = ReactiveCache.getCurrentSetting();
       let oidcBtnElt = $("#at-oidc");
-      if(currSetting && currSetting !== undefined && currSetting.oidcBtnText !== undefined && oidcBtnElt != null && oidcBtnElt != undefined){
+      if (currSetting && currSetting !== undefined && currSetting.oidcBtnText !== undefined && oidcBtnElt != null && oidcBtnElt != undefined) {
         let htmlvalue = "<i class='fa fa-oidc'></i>" + currSetting.oidcBtnText;
-        if(alreadyCheck == 1){
+        if (alreadyCheck == 1) {
           alreadyCheck++;
           oidcBtnElt.html("");
         }
-        else{
+        else {
           alreadyCheck++;
           oidcBtnElt.html(htmlvalue);
         }
       }
     }
-    else{
+    else {
       alreadyCheck = 1;
     }
   },
-  'DOMSubtreeModified .at-form'(event){
-    if(alreadyCheck <= 2 && !isCheckDone){
-      if(document.getElementById("at-oidc") != null){
-        let currSetting = Settings.findOne();
+  'DOMSubtreeModified .at-form'(event) {
+    if (alreadyCheck <= 2 && !isCheckDone) {
+      if (document.getElementById("at-oidc") != null) {
+        let currSetting = ReactiveCache.getCurrentSetting();
         let oidcBtnElt = $("#at-oidc");
-        if(currSetting && currSetting !== undefined && currSetting.oidcBtnText !== undefined && oidcBtnElt != null && oidcBtnElt != undefined){
+        if (currSetting && currSetting !== undefined && currSetting.oidcBtnText !== undefined && oidcBtnElt != null && oidcBtnElt != undefined) {
           let htmlvalue = "<i class='fa fa-oidc'></i>" + currSetting.oidcBtnText;
-          if(alreadyCheck == 1){
+          if (alreadyCheck == 1) {
             alreadyCheck++;
             oidcBtnElt.html("");
           }
-          else{
+          else {
             alreadyCheck++;
             isCheckDone = true;
             oidcBtnElt.html(htmlvalue);
@@ -220,7 +198,7 @@ Template.userFormsLayout.events({
         }
       }
     }
-    else{
+    else {
       alreadyCheck = 1;
     }
   },
@@ -252,7 +230,7 @@ async function authentication(event, templateInstance) {
   switch (result) {
     case 'ldap':
       return new Promise(resolve => {
-        Meteor.loginWithLDAP(match, password, function() {
+        Meteor.loginWithLDAP(match, password, function () {
           resolve(FlowRouter.go('/'));
         });
       });
@@ -264,7 +242,7 @@ async function authentication(event, templateInstance) {
           {
             provider,
           },
-          function() {
+          function () {
             resolve(FlowRouter.go('/'));
           },
         );
@@ -272,7 +250,7 @@ async function authentication(event, templateInstance) {
 
     case 'cas':
       return new Promise(resolve => {
-        Meteor.loginWithCas(match, password, function() {
+        Meteor.loginWithCas(match, password, function () {
           resolve(FlowRouter.go('/'));
         });
       });
@@ -298,7 +276,6 @@ function getUserAuthenticationMethod(defaultAuthenticationMethod, match) {
       Meteor.subscribe('user-authenticationMethod', match, {
         onReady() {
           const user = Users.findOne();
-
           const authenticationMethod = user
             ? user.authenticationMethod
             : defaultAuthenticationMethod;

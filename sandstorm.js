@@ -1,7 +1,10 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { Meteor } from 'meteor/meteor';
+import { Picker } from 'meteor/communitypackages:picker';
+
 // Sandstorm context is detected using the METEOR_SETTINGS environment variable
 // in the package definition.
-const isSandstorm =
-  Meteor.settings && Meteor.settings.public && Meteor.settings.public.sandstorm;
+const isSandstorm = Meteor.settings?.public?.sandstorm;
 
 // In sandstorm we only have one board per sandstorm instance. Since we want to
 // keep most of our code unchanged, we simply hard-code a board `_id` and
@@ -202,7 +205,7 @@ if (isSandstorm && Meteor.isServer) {
 
           if (doc.cardId) {
             path = `b/sandstorm/libreboard/${doc.cardId}`;
-            Cards.findOne(doc.cardId).members.map(subscribedUser);
+            ReactiveCache.getCard(doc.cardId).members.map(subscribedUser);
           }
 
           if (doc.memberId) {
@@ -210,10 +213,10 @@ if (isSandstorm && Meteor.isServer) {
           }
 
           if (doc.activityType === 'addComment') {
-            const comment = CardComments.findOne(doc.commentId);
+            const comment = ReactiveCache.getCardComment(doc.commentId);
             caption = { defaultText: comment.text };
             const activeMembers = _.pluck(
-              Boards.findOne(sandstormBoard._id).activeMembers(),
+              ReactiveCache.getBoard(sandstormBoard._id).activeMembers(),
               'userId',
             );
             (comment.text.match(/\B@([\w.]*)/g) || []).forEach(username => {
@@ -247,7 +250,7 @@ if (isSandstorm && Meteor.isServer) {
       isWorker,
     };
 
-    const boardMembers = Boards.findOne(sandstormBoard._id).members;
+    const boardMembers = ReactiveCache.getBoard(sandstormBoard._id).members;
     const memberIndex = _.pluck(boardMembers, 'userId').indexOf(userId);
 
     let modifier;
@@ -285,7 +288,7 @@ if (isSandstorm && Meteor.isServer) {
   // called, the user is inserted into the database but not connected. So
   // despite the appearances `userId` is null in this block.
   Users.after.insert((userId, doc) => {
-    if (!Boards.findOne(sandstormBoard._id)) {
+    if (!ReactiveCache.getBoard(sandstormBoard._id)) {
       Boards.insert(sandstormBoard, { validate: false });
       Swimlanes.insert({
         title: 'Default',
@@ -309,7 +312,7 @@ if (isSandstorm && Meteor.isServer) {
     const username = doc.services.sandstorm.preferredHandle;
     let appendNumber = 0;
     while (
-      Users.findOne({
+      ReactiveCache.getUser({
         _id: { $ne: doc._id },
         username: generateUniqueUsername(username, appendNumber),
       })

@@ -25,7 +25,11 @@
       #---------------------------------------------
       # This is local port where Wekan Node.js runs, same as below on Caddyfile settings.
       export PORT=2000
-      #---------------------------------------------
+      #---------------------------------------------------------------
+      # ==== AFTER OIDC LOGIN, ADD USERS AUTOMATICALLY TO THIS BOARD ID ====
+      # https://github.com/wekan/wekan/pull/5098
+      #- DEFAULT_BOARD_ID=abcd1234
+      #---------------------------------------------------------------
       # ==== NUMBER OF SEARCH RESULTS PER PAGE BY DEFAULT ====
       #export RESULTS_PER_PAGE=20
       #---------------------------------------------
@@ -42,6 +46,21 @@
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
+      #---------------------------------------------------------------
+      # ==== ACCOUNT OPTIONS ====
+      # https://docs.meteor.com/api/accounts-multi.html#AccountsCommon-config
+      # Defaults below. Uncomment to change. wekan/server/accounts-common.js
+      # - ACCOUNTS_COMMON_LOGIN_EXPIRATION_IN_DAYS=90
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded attachments ====
+      #export ATTACHMENTS_UPLOAD_EXTERNAL_PROGRAM="/usr/local/bin/avscan {file}"
+      #export ATTACHMENTS_UPLOAD_MIME_TYPES="image/*,text/*"
+      #export ATTACHMENTS_UPLOAD_MAX_SIZE=5000000
+      #---------------------------------------------------------------
+      # ==== Allow configuration to validate uploaded avatars ====
+      #export AVATARS_UPLOAD_EXTERNAL_PROGRAM="/usr/local/bin/avscan {file}"
+      #export AVATARS_UPLOAD_MIME_TYPES="image/*"
+      #export AVATARS_UPLOAD_MAX_SIZE=500000
       #---------------------------------------------------------------
       # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
       # https://github.com/wekan/wekan/pull/2560
@@ -190,7 +209,7 @@
       # OAUTH2 ID Token Whitelist Fields.
       #export OAUTH2_ID_TOKEN_WHITELIST_FIELDS=[]
       # OAUTH2 Request Permissions.
-      #export OAUTH2_REQUEST_PERMISSIONS='openid profile email'
+      #export OAUTH2_REQUEST_PERMISSIONS=openid profile email
       # OAuth2 ID Mapping
       #export OAUTH2_ID_MAP=
       # OAuth2 Username Mapping

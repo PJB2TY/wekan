@@ -1,6 +1,8 @@
-//var nodemailer = require('nodemailer');
+import { ReactiveCache } from '/imports/reactiveCache';
 import { SyncedCron } from 'meteor/percolate:synced-cron';
+import { TAPi18n } from '/imports/i18n';
 import ImpersonatedUsers from './impersonatedUsers';
+import { Index, MongoDBEngine } from 'meteor/easy:search';
 
 // Sandstorm context is detected using the METEOR_SETTINGS environment variable
 // in the package definition.
@@ -43,39 +45,39 @@ Users.attachSchema(
       /**
        * the list of organizations that a user belongs to
        */
-       type: [Object],
-       optional: true,
+      type: [Object],
+      optional: true,
     },
-    'orgs.$.orgId':{
+    'orgs.$.orgId': {
       /**
        * The uniq ID of the organization
        */
-       type: String,
+      type: String,
     },
-    'orgs.$.orgDisplayName':{
+    'orgs.$.orgDisplayName': {
       /**
        * The display name of the organization
        */
-       type: String,
+      type: String,
     },
     teams: {
       /**
        * the list of teams that a user belongs to
        */
-       type: [Object],
-       optional: true,
+      type: [Object],
+      optional: true,
     },
-    'teams.$.teamId':{
+    'teams.$.teamId': {
       /**
        * The uniq ID of the team
        */
-       type: String,
+      type: String,
     },
-    'teams.$.teamDisplayName':{
+    'teams.$.teamDisplayName': {
       /**
        * The display name of the team
        */
-       type: String,
+      type: String,
     },
     emails: {
       /**
@@ -226,6 +228,96 @@ Users.attachSchema(
       type: String,
       optional: true,
     },
+    'profile.moveAndCopyDialog': {
+      /**
+       * move and copy card dialog
+       */
+      type: Object,
+      optional: true,
+      blackbox: true,
+    },
+    'profile.moveAndCopyDialog.$.boardId': {
+      /**
+       * last selected board id
+       */
+      type: String,
+    },
+    'profile.moveAndCopyDialog.$.swimlaneId': {
+      /**
+       * last selected swimlane id
+       */
+      type: String,
+    },
+    'profile.moveAndCopyDialog.$.listId': {
+      /**
+       * last selected list id
+       */
+      type: String,
+    },
+    'profile.moveChecklistDialog': {
+      /**
+       * move checklist dialog
+       */
+      type: Object,
+      optional: true,
+      blackbox: true,
+    },
+    'profile.moveChecklistDialog.$.boardId': {
+      /**
+       * last selected board id
+       */
+      type: String,
+    },
+    'profile.moveChecklistDialog.$.swimlaneId': {
+      /**
+       * last selected swimlane id
+       */
+      type: String,
+    },
+    'profile.moveChecklistDialog.$.listId': {
+      /**
+       * last selected list id
+       */
+      type: String,
+    },
+    'profile.moveChecklistDialog.$.cardId': {
+      /**
+       * last selected card id
+       */
+      type: String,
+    },
+    'profile.copyChecklistDialog': {
+      /**
+       * copy checklist dialog
+       */
+      type: Object,
+      optional: true,
+      blackbox: true,
+    },
+    'profile.copyChecklistDialog.$.boardId': {
+      /**
+       * last selected board id
+       */
+      type: String,
+    },
+    'profile.copyChecklistDialog.$.swimlaneId': {
+      /**
+       * last selected swimlane id
+       */
+      type: String,
+    },
+    'profile.copyChecklistDialog.$.listId': {
+      /**
+       * last selected list id
+       */
+      type: String,
+    },
+    'profile.copyChecklistDialog.$.cardId': {
+      /**
+       * last selected card id
+       */
+      type: String,
+    },
     'profile.notifications': {
       /**
        * enabled notifications for the user
@@ -244,6 +336,13 @@ Users.attachSchema(
        * the date on which this notification was read
        */
       type: Date,
+      optional: true,
+    },
+    'profile.rescueCardDescription': {
+      /**
+       * show dialog for saving card description on unintentional card closing
+       */
+      type: Boolean,
       optional: true,
     },
     'profile.showCardsCountAt': {
@@ -323,6 +422,24 @@ Users.attachSchema(
       type: String,
       defaultValue: '',
     },
+    'profile.listWidths': {
+      /**
+       * User-specified width of each list (or nothing if default).
+       * profile[boardId][listId] = width;
+       */
+      type: Object,
+      defaultValue: {},
+      blackbox: true,
+    },
+    'profile.swimlaneHeights': {
+      /**
+       * User-specified heights of each swimlane (or nothing if default).
+       * profile[boardId][swimlaneId] = height;
+       */
+      type: Object,
+      defaultValue: {},
+      blackbox: true,
+    },
     services: {
       /**
        * services field of the user
@@ -395,15 +512,17 @@ Users.attachSchema(
       type: [String],
       optional: true,
     },
+    lastConnectionDate: {
+      type: Date,
+      optional: true,
+    },
   }),
 );
 
 Users.allow({
   update(userId, doc) {
-    const user = Users.findOne({
-      _id: userId,
-    });
-    if ((user && user.isAdmin) || (Meteor.user() && Meteor.user().isAdmin))
+    const user = ReactiveCache.getUser(userId) || ReactiveCache.getCurrentUser();
+    if (user?.isAdmin)
       return true;
     if (!user) {
       return false;
@@ -411,10 +530,10 @@ Users.allow({
     return doc._id === userId;
   },
   remove(userId, doc) {
-    const adminsNumber = Users.find({
+    const adminsNumber = ReactiveCache.getUsers({
       isAdmin: true,
-    }).count();
-    const { isAdmin } = Users.findOne(
+    }).length;
+    const isAdmin = ReactiveCache.getUser(
       {
         _id: userId,
       },
@@ -436,12 +555,30 @@ Users.allow({
   fetch: [],
 });
 
+// Non-Admin users can not change to Admin
+Users.deny({
+  update(userId, board, fieldNames) {
+    return _.contains(fieldNames, 'isAdmin') && !ReactiveCache.getCurrentUser().isAdmin;
+  },
+  fetch: [],
+});
+
+
 // Search a user in the complete server database by its name, username or emails adress. This
 // is used for instance to add a new user to a board.
-const searchInFields = ['username', 'profile.fullname', 'emails.address'];
-Users.initEasySearch(searchInFields, {
-  use: 'mongo-db',
-  returnFields: [...searchInFields, 'profile.avatarUrl'],
+UserSearchIndex = new Index({
+  collection: Users,
+  fields: ['username', 'profile.fullname', 'profile.avatarUrl'],
+  allowedFields: ['username', 'profile.fullname', 'profile.avatarUrl'],
+  engine: new MongoDBEngine({
+    fields: function (searchObject, options) {
+      return {
+        username: 1,
+        'profile.fullname': 1,
+        'profile.avatarUrl': 1,
+      };
+    },
+  }),
 });
 
 Users.safeFields = {
@@ -453,51 +590,57 @@ Users.safeFields = {
   orgs: 1,
   teams: 1,
   authenticationMethod: 1,
+  lastConnectionDate: 1,
 };
 
 if (Meteor.isClient) {
   Users.helpers({
     isBoardMember() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return board && board.hasMember(this._id);
     },
 
     isNotNoComments() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return (
         board && board.hasMember(this._id) && !board.hasNoComments(this._id)
       );
     },
 
     isNoComments() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return board && board.hasNoComments(this._id);
     },
 
     isNotCommentOnly() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return (
         board && board.hasMember(this._id) && !board.hasCommentOnly(this._id)
       );
     },
 
     isCommentOnly() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return board && board.hasCommentOnly(this._id);
     },
 
     isNotWorker() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return board && board.hasMember(this._id) && !board.hasWorker(this._id);
     },
 
     isWorker() {
-      const board = Boards.findOne(Session.get('currentBoard'));
+      const board = Utils.getCurrentBoard();
       return board && board.hasWorker(this._id);
     },
 
-    isBoardAdmin(boardId = Session.get('currentBoard')) {
-      const board = Boards.findOne(boardId);
+    isBoardAdmin(boardId) {
+      let board;
+      if (boardId) {
+        board = ReactiveCache.getBoard(boardId);
+      } else {
+        board = Utils.getCurrentBoard();
+      }
       return board && board.hasAdmin(this._id);
     },
   });
@@ -514,57 +657,77 @@ Users.helpers({
     }
     return '';
   },
+  teamIds() {
+    if (this.teams) {
+      // TODO: Should the Team collection be queried to determine if the team isActive?
+      return this.teams.map((team) => {
+        return team.teamId;
+      });
+    }
+    return [];
+  },
+  orgIds() {
+    if (this.orgs) {
+      // TODO: Should the Org collection be queried to determine if the organization isActive?
+      return this.orgs.map((org) => {
+        return org.orgId;
+      });
+    }
+    return [];
+  },
   orgsUserBelongs() {
     if (this.orgs) {
-      return this.orgs.map(function(org){return org.orgDisplayName}).join(',');
+      return this.orgs
+        .map(function (org) {
+          return org.orgDisplayName;
+        })
+        .sort()
+        .join(',');
     }
     return '';
   },
   orgIdsUserBelongs() {
     if (this.orgs) {
-      return this.orgs.map(function(org){return org.orgId}).join(',');
+      return this.orgs
+        .map(function (org) {
+          return org.orgId;
+        })
+        .join(',');
     }
     return '';
   },
   teamsUserBelongs() {
     if (this.teams) {
-      return this.teams.map(function(team){ return team.teamDisplayName}).join(',');
+      return this.teams
+        .map(function (team) {
+          return team.teamDisplayName;
+        })
+        .sort()
+        .join(',');
     }
     return '';
   },
   teamIdsUserBelongs() {
     if (this.teams) {
-      return this.teams.map(function(team){ return team.teamId}).join(',');
+      return this.teams
+        .map(function (team) {
+          return team.teamId;
+        })
+        .join(',');
     }
     return '';
   },
   boards() {
-    return Boards.find(
-      {
-        'members.userId': this._id,
-      },
-      {
-        sort: {
-          sort: 1 /* boards default sorting */,
-        },
-      },
-    );
+    return Boards.userBoards(this._id, null, {}, { sort: { sort: 1 } });
   },
 
   starredBoards() {
     const { starredBoards = [] } = this.profile || {};
-    return Boards.find(
-      {
-        archived: false,
-        _id: {
-          $in: starredBoards,
-        },
-      },
-      {
-        sort: {
-          sort: 1 /* boards default sorting */,
-        },
-      },
+    return Boards.userBoards(
+      this._id,
+      false,
+      { _id: { $in: starredBoards } },
+      { sort: { sort: 1 } },
     );
   },
 
@@ -575,18 +738,11 @@ Users.helpers({
 
   invitedBoards() {
     const { invitedBoards = [] } = this.profile || {};
-    return Boards.find(
-      {
-        archived: false,
-        _id: {
-          $in: invitedBoards,
-        },
-      },
-      {
-        sort: {
-          sort: 1 /* boards default sorting */,
-        },
-      },
+    return Boards.userBoards(
+      this._id,
+      false,
+      { _id: { $in: invitedBoards } },
+      { sort: { sort: 1 } },
     );
   },
 
@@ -620,6 +776,65 @@ Users.helpers({
     return this._getListSortBy()[1];
   },
 
+  getListWidths() {
+    const { listWidths = {} } = this.profile || {};
+    return listWidths;
+  },
+  getListWidth(boardId, listId) {
+    const listWidths = this.getListWidths();
+    if (listWidths[boardId] && listWidths[boardId][listId]) {
+      return listWidths[boardId][listId];
+    } else {
+      return 270; //TODO(mark-i-m): default?
+    }
+  },
+
+  getSwimlaneHeights() {
+    const { swimlaneHeights = {} } = this.profile || {};
+    return swimlaneHeights;
+  },
+  getSwimlaneHeight(boardId, listId) {
+    const swimlaneHeights = this.getSwimlaneHeights();
+    if (swimlaneHeights[boardId] && swimlaneHeights[boardId][listId]) {
+      return swimlaneHeights[boardId][listId];
+    } else {
+      return -1;
+    }
+  },
+
+  /** returns all confirmed move and copy dialog field values
+   * <li> the board, swimlane and list id is stored for each board
+   */
+  getMoveAndCopyDialogOptions() {
+    let _ret = {};
+    if (this.profile && this.profile.moveAndCopyDialog) {
+      _ret = this.profile.moveAndCopyDialog;
+    }
+    return _ret;
+  },
+
+  /** returns all confirmed move checklist dialog field values
+   * <li> the board, swimlane, list and card id is stored for each board
+   */
+  getMoveChecklistDialogOptions() {
+    let _ret = {};
+    if (this.profile && this.profile.moveChecklistDialog) {
+      _ret = this.profile.moveChecklistDialog;
+    }
+    return _ret;
+  },
+
+  /** returns all confirmed copy checklist dialog field values
+   * <li> the board, swimlane, list and card id is stored for each board
+   */
+  getCopyChecklistDialogOptions() {
+    let _ret = {};
+    if (this.profile && this.profile.copyChecklistDialog) {
+      _ret = this.profile.copyChecklistDialog;
+    }
+    return _ret;
+  },
+
   hasTag(tag) {
     const { tags = [] } = this.profile || {};
     return _.contains(tags, tag);
@@ -637,7 +852,7 @@ Users.helpers({
       const notification = notifications[index];
       // this preserves their db sort order for editing
       notification.dbIndex = index;
-      notification.activity = Activities.findOne(notification.activity);
+      notification.activity = ReactiveCache.getActivity(notification.activity);
     }
     // this sorts them newest to oldest to match Trello's behavior
     notifications.reverse();
@@ -672,6 +887,11 @@ Users.helpers({
   hasHiddenMinicardLabelText() {
     const profile = this.profile || {};
     return profile.hiddenMinicardLabelText || false;
+  },
+
+  hasRescuedCardDescription() {
+    const profile = this.profile || {};
+    return profile.rescueCardDescription || false;
   },
 
   getEmailBuffer() {
@@ -723,7 +943,8 @@ Users.helpers({
   },
 
   getTemplatesBoardSlug() {
-    return (Boards.findOne((this.profile || {}).templatesBoardId) || {}).slug;
+    //return (ReactiveCache.getBoard((this.profile || {}).templatesBoardId) || {}).slug;
+    return 'templates';
   },
 
   remove() {
@@ -734,6 +955,45 @@ Users.helpers({
 });
 
 Users.mutations({
+  /** set the confirmed board id/swimlane id/list id of a board
+   * @param boardId the current board id
+   * @param options an object with the confirmed field values
+   */
+  setMoveAndCopyDialogOption(boardId, options) {
+    let currentOptions = this.getMoveAndCopyDialogOptions();
+    currentOptions[boardId] = options;
+    return {
+      $set: {
+        'profile.moveAndCopyDialog': currentOptions,
+      },
+    };
+  },
+  /** set the confirmed board id/swimlane id/list id/card id of a board (move checklist)
+   * @param boardId the current board id
+   * @param options an object with the confirmed field values
+   */
+  setMoveChecklistDialogOption(boardId, options) {
+    let currentOptions = this.getMoveChecklistDialogOptions();
+    currentOptions[boardId] = options;
+    return {
+      $set: {
+        'profile.moveChecklistDialog': currentOptions,
+      },
+    };
+  },
+  /** set the confirmed board id/swimlane id/list id/card id of a board (copy checklist)
+   * @param boardId the current board id
+   * @param options an object with the confirmed field values
+   */
+  setCopyChecklistDialogOption(boardId, options) {
+    let currentOptions = this.getCopyChecklistDialogOptions();
+    currentOptions[boardId] = options;
+    return {
+      $set: {
+        'profile.copyChecklistDialog': currentOptions,
+      },
+    };
+  },
   toggleBoardStar(boardId) {
     const queryKind = this.hasStarred(boardId) ? '$pull' : '$addToSet';
     return {
@@ -844,6 +1104,13 @@ Users.mutations({
       },
     };
   },
+  toggleRescueCardDescription(value = false) {
+    return {
+      $set: {
+        'profile.rescueCardDescription': !value,
+      },
+    };
+  },
 
   addNotification(activityId) {
     return {
@@ -912,51 +1179,95 @@ Users.mutations({
       },
     };
   },
+
+  setListWidth(boardId, listId, width) {
+    let currentWidths = this.getListWidths();
+    if (!currentWidths[boardId]) {
+      currentWidths[boardId] = {};
+    }
+    currentWidths[boardId][listId] = width;
+    return {
+      $set: {
+        'profile.listWidths': currentWidths,
+      },
+    };
+  },
+
+  setSwimlaneHeight(boardId, swimlaneId, height) {
+    let currentHeights = this.getSwimlaneHeights();
+    if (!currentHeights[boardId]) {
+      currentHeights[boardId] = {};
+    }
+    currentHeights[boardId][swimlaneId] = height;
+    return {
+      $set: {
+        'profile.swimlaneHeights': currentHeights,
+      },
+    };
+  },
 });
 
 Meteor.methods({
   setListSortBy(value) {
     check(value, String);
-    Meteor.user().setListSortBy(value);
+    ReactiveCache.getCurrentUser().setListSortBy(value);
   },
   toggleDesktopDragHandles() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleDesktopHandles(user.hasShowDesktopDragHandles());
   },
   toggleHideCheckedItems() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleHideCheckedItems();
   },
   toggleSystemMessages() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleSystem(user.hasHiddenSystemMessages());
   },
   toggleCustomFieldsGrid() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleFieldsGrid(user.hasCustomFieldsGrid());
   },
   toggleCardMaximized() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleCardMaximized(user.hasCardMaximized());
   },
   toggleMinicardLabelText() {
-    const user = Meteor.user();
+    const user = ReactiveCache.getCurrentUser();
     user.toggleLabelText(user.hasHiddenMinicardLabelText());
+  },
+  toggleRescueCardDescription() {
+    const user = ReactiveCache.getCurrentUser();
+    user.toggleRescueCardDescription(user.hasRescuedCardDescription());
   },
   changeLimitToShowCardsCount(limit) {
     check(limit, Number);
-    Meteor.user().setShowCardsCountAt(limit);
+    ReactiveCache.getCurrentUser().setShowCardsCountAt(limit);
   },
   changeStartDayOfWeek(startDay) {
     check(startDay, Number);
-    Meteor.user().setStartDayOfWeek(startDay);
+    ReactiveCache.getCurrentUser().setStartDayOfWeek(startDay);
+  },
+  applyListWidth(boardId, listId, width) {
+    check(boardId, String);
+    check(listId, String);
+    check(width, Number);
+    const user = Meteor.user();
+    user.setListWidth(boardId, listId, width);
+  },
+  applySwimlaneHeight(boardId, swimlaneId, height) {
+    check(boardId, String);
+    check(swimlaneId, String);
+    check(height, Number);
+    const user = Meteor.user();
+    user.setSwimlaneHeight(boardId, swimlaneId, height);
   },
 });
 
 if (Meteor.isServer) {
   Meteor.methods({
     setAllUsersHideSystemMessages() {
-      if (Meteor.user() && Meteor.user().isAdmin) {
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
         // If setting is missing, add it
         Users.update(
           {
@@ -1014,13 +1325,13 @@ if (Meteor.isServer) {
       check(importUsernames, Array);
       check(userOrgsArray, Array);
       check(userTeamsArray, Array);
-      if (Meteor.user() && Meteor.user().isAdmin) {
-        const nUsersWithUsername = Users.find({
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
+        const nUsersWithUsername = ReactiveCache.getUsers({
           username,
-        }).count();
-        const nUsersWithEmail = Users.find({
+        }).length;
+        const nUsersWithEmail = ReactiveCache.getUsers({
           email,
-        }).count();
+        }).length;
         if (nUsersWithUsername > 0) {
           throw new Meteor.Error('username-already-taken');
         } else if (nUsersWithEmail > 0) {
@@ -1035,10 +1346,8 @@ if (Meteor.isServer) {
             from: 'admin',
           });
           const user =
-            Users.findOne(username) ||
-            Users.findOne({
-              username,
-            });
+            ReactiveCache.getUser(username) ||
+            ReactiveCache.getUser({ username });
           if (user) {
             Users.update(user._id, {
               $set: {
@@ -1056,10 +1365,10 @@ if (Meteor.isServer) {
     setUsername(username, userId) {
       check(username, String);
       check(userId, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
-        const nUsersWithUsername = Users.find({
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
+        const nUsersWithUsername = ReactiveCache.getUsers({
           username,
-        }).count();
+        }).length;
         if (nUsersWithUsername > 0) {
           throw new Meteor.Error('username-already-taken');
         } else {
@@ -1074,11 +1383,11 @@ if (Meteor.isServer) {
     setEmail(email, userId) {
       check(email, String);
       check(username, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
         if (Array.isArray(email)) {
           email = email.shift();
         }
-        const existingUser = Users.findOne(
+        const existingUser = ReactiveCache.getUser(
           {
             'emails.address': email,
           },
@@ -1108,7 +1417,7 @@ if (Meteor.isServer) {
       check(username, String);
       check(email, String);
       check(userId, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
         if (Array.isArray(email)) {
           email = email.shift();
         }
@@ -1119,17 +1428,15 @@ if (Meteor.isServer) {
     setPassword(newPassword, userId) {
       check(userId, String);
       check(newPassword, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
-        if (Meteor.user().isAdmin) {
-          Accounts.setPassword(userId, newPassword);
-        }
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
+        Accounts.setPassword(userId, newPassword);
       }
     },
     setEmailVerified(email, verified, userId) {
       check(email, String);
       check(verified, Boolean);
       check(userId, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
         Users.update(userId, {
           $set: {
             emails: [
@@ -1145,7 +1452,7 @@ if (Meteor.isServer) {
     setInitials(initials, userId) {
       check(initials, String);
       check(userId, String);
-      if (Meteor.user() && Meteor.user().isAdmin) {
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
         Users.update(userId, {
           $set: {
             'profile.initials': initials,
@@ -1158,8 +1465,8 @@ if (Meteor.isServer) {
       check(username, String);
       check(boardId, String);
 
-      const inviter = Meteor.user();
-      const board = Boards.findOne(boardId);
+      const inviter = ReactiveCache.getCurrentUser();
+      const board = ReactiveCache.getBoard(boardId);
       const allowInvite =
         inviter &&
         board &&
@@ -1177,7 +1484,7 @@ if (Meteor.isServer) {
       const posAt = username.indexOf('@');
       let user = null;
       if (posAt >= 0) {
-        user = Users.findOne({
+        user = ReactiveCache.getUser({
           emails: {
             $elemMatch: {
               address: username,
@@ -1186,21 +1493,15 @@ if (Meteor.isServer) {
         });
       } else {
         user =
-          Users.findOne(username) ||
-          Users.findOne({
-            username,
-          });
+          ReactiveCache.getUser(username) ||
+          ReactiveCache.getUser({ username });
       }
       if (user) {
         if (user._id === inviter._id)
           throw new Meteor.Error('error-user-notAllowSelf');
       } else {
         if (posAt <= 0) throw new Meteor.Error('error-user-doesNotExist');
-        if (
-          Settings.findOne({
-            disableRegistration: true,
-          })
-        ) {
+        if (ReactiveCache.getCurrentSetting().disableRegistration) {
           throw new Meteor.Error('error-user-notCreated');
         }
         // Set in lowercase email before creating account
@@ -1220,7 +1521,7 @@ if (Meteor.isServer) {
           });
         }
         Accounts.sendEnrollmentEmail(newUserId);
-        user = Users.findOne(newUserId);
+        user = ReactiveCache.getUser(newUserId);
       }
 
       board.addMember(user._id);
@@ -1228,7 +1529,7 @@ if (Meteor.isServer) {
 
       //Check if there is a subtasks board
       if (board.subtasksDefaultBoardId) {
-        const subBoard = Boards.findOne(board.subtasksDefaultBoardId);
+        const subBoard = ReactiveCache.getBoard(board.subtasksDefaultBoardId);
         //If there is, also add user to that board
         if (subBoard) {
           subBoard.addMember(user._id);
@@ -1237,16 +1538,30 @@ if (Meteor.isServer) {
       }
 
       try {
-        const fullName = inviter.profile !== undefined ?  inviter.profile.fullname : "";
+        const fullName =
+          inviter.profile !== undefined &&
+            inviter.profile.fullname !== undefined
+            ? inviter.profile.fullname
+            : '';
+        const userFullName =
+          user.profile !== undefined && user.profile.fullname !== undefined
+            ? user.profile.fullname
+            : '';
         const params = {
-          user: user.username,
-          inviter: fullName != "" ? fullName + " (" + inviter.username + " )" : inviter.username,
+          user:
+            userFullName != ''
+              ? userFullName + ' (' + user.username + ' )'
+              : user.username,
+          inviter:
+            fullName != ''
+              ? fullName + ' (' + inviter.username + ' )'
+              : inviter.username,
           board: board.title,
           url: board.absoluteUrl(),
         };
         const lang = user.getLanguage();
 
-/*
+        /*
         if (process.env.MAIL_SERVICE !== '') {
           let transporter = nodemailer.createTransport({
             service: process.env.MAIL_SERVICE,
@@ -1287,27 +1602,77 @@ if (Meteor.isServer) {
     impersonate(userId) {
       check(userId, String);
 
-      if (!Meteor.users.findOne(userId))
+      if (!ReactiveCache.getUser(userId))
         throw new Meteor.Error(404, 'User not found');
-      if (!Meteor.user().isAdmin)
+      if (!ReactiveCache.getCurrentUser().isAdmin)
         throw new Meteor.Error(403, 'Permission denied');
 
-      ImpersonatedUsers.insert({ adminId: Meteor.user()._id, userId: userId, reason: 'clickedImpersonate' });
+      ImpersonatedUsers.insert({
+        adminId: ReactiveCache.getCurrentUser()._id,
+        userId: userId,
+        reason: 'clickedImpersonate',
+      });
       this.setUserId(userId);
     },
     isImpersonated(userId) {
       check(userId, String);
-      const isImpersonated = ImpersonatedUsers.findOne({
-        userId: userId,
-      });
+      const isImpersonated = ReactiveCache.getImpersonatedUser({ userId: userId });
       return isImpersonated;
+    },
+    setUsersTeamsTeamDisplayName(teamId, teamDisplayName) {
+      check(teamId, String);
+      check(teamDisplayName, String);
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
+        ReactiveCache.getUsers({
+          teams: {
+            $elemMatch: { teamId: teamId },
+          },
+        }).forEach((user) => {
+          Users.update(
+            {
+              _id: user._id,
+              teams: {
+                $elemMatch: { teamId: teamId },
+              },
+            },
+            {
+              $set: {
+                'teams.$.teamDisplayName': teamDisplayName,
+              },
+            },
+          );
+        });
+      }
+    },
+    setUsersOrgsOrgDisplayName(orgId, orgDisplayName) {
+      check(orgId, String);
+      check(orgDisplayName, String);
+      if (ReactiveCache.getCurrentUser()?.isAdmin) {
+        ReactiveCache.getUsers({
+          orgs: {
+            $elemMatch: { orgId: orgId },
+          },
+        }).forEach((user) => {
+          Users.update(
+            {
+              _id: user._id,
+              orgs: {
+                $elemMatch: { orgId: orgId },
+              },
+            },
+            {
+              $set: {
+                'orgs.$.orgDisplayName': orgDisplayName,
+              },
+            },
+          );
+        });
+      }
     },
   });
   Accounts.onCreateUser((options, user) => {
-    const userCount = Users.find().count();
-    if (userCount === 0) {
-      user.isAdmin = true;
-    }
+    const userCount = ReactiveCache.getUsers({}, {}, true).count();
+    user.isAdmin = userCount === 0;
 
     if (user.services.oidc) {
       let email = user.services.oidc.email;
@@ -1336,7 +1701,7 @@ if (Meteor.isServer) {
       user.authenticationMethod = 'oauth2';
 
       // see if any existing user has this email address or username, otherwise create new
-      const existingUser = Meteor.users.findOne({
+      const existingUser = ReactiveCache.getUser({
         $or: [
           {
             'emails.address': email,
@@ -1370,7 +1735,7 @@ if (Meteor.isServer) {
       return user;
     }
 
-    const disableRegistration = Settings.findOne().disableRegistration;
+    const disableRegistration = ReactiveCache.getCurrentSetting().disableRegistration;
     // If this is the first Authentication by the ldap and self registration disabled
     if (disableRegistration && options && options.ldap) {
       user.authenticationMethod = 'ldap';
@@ -1388,7 +1753,7 @@ if (Meteor.isServer) {
         'The invitation code is required',
       );
     }
-    const invitationCode = InvitationCodes.findOne({
+    const invitationCode = ReactiveCache.getInvitationCode({
       code: options.profile.invitationcode,
       email: options.email,
       valid: true,
@@ -1432,7 +1797,7 @@ const addCronJob = _.debounce(
       name: 'notification_cleanup',
       schedule: (parser) => parser.text('every 1 days'),
       job: () => {
-        for (const user of Users.find()) {
+        for (const user of ReactiveCache.getUsers()) {
           if (!user.profile || !user.profile.notifications) continue;
           for (const notification of user.profile.notifications) {
             if (notification.read) {
@@ -1456,12 +1821,13 @@ if (Meteor.isServer) {
   // Let mongoDB ensure username unicity
   Meteor.startup(() => {
     allowedSortValues.forEach((value) => {
-      Lists._collection._ensureIndex(value);
+      Lists._collection.createIndex(value);
     });
-    Users._collection._ensureIndex({
+    Users._collection.createIndex({
       modifiedAt: -1,
     });
-    Users._collection._ensureIndex(
+    /* Commented out extra index because of IndexOptionsConflict.
+    Users._collection.createIndex(
       {
         username: 1,
       },
@@ -1469,6 +1835,7 @@ if (Meteor.isServer) {
         unique: true,
       },
     );
+*/
     Meteor.defer(() => {
       addCronJob();
     });
@@ -1654,9 +2021,7 @@ if (Meteor.isServer) {
 
   Users.after.insert((userId, doc) => {
     // HACK
-    doc = Users.findOne({
-      _id: doc._id,
-    });
+    doc = ReactiveCache.getUser(doc._id);
     if (doc.createdThroughApi) {
       // The admin user should be able to create a user despite disabling registration because
       // it is two different things (registration and creation).
@@ -1673,19 +2038,28 @@ if (Meteor.isServer) {
     }
 
     //invite user to corresponding boards
-    const disableRegistration = Settings.findOne().disableRegistration;
+    const disableRegistration = ReactiveCache.getCurrentSetting().disableRegistration;
     // If ldap, bypass the inviation code if the self registration isn't allowed.
     // TODO : pay attention if ldap field in the user model change to another content ex : ldap field to connection_type
     if (doc.authenticationMethod !== 'ldap' && disableRegistration) {
-      const invitationCode = InvitationCodes.findOne({
-        code: doc.profile.icode,
-        valid: true,
-      });
+      let invitationCode = null;
+      if (doc.authenticationMethod.toLowerCase() == 'oauth2') {
+        // OIDC authentication mode
+        invitationCode = ReactiveCache.getInvitationCode({
+          email: doc.emails[0].address.toLowerCase(),
+          valid: true,
+        });
+      } else {
+        invitationCode = ReactiveCache.getInvitationCode({
+          code: doc.profile.icode,
+          valid: true,
+        });
+      }
       if (!invitationCode) {
         throw new Meteor.Error('error-invitation-code-not-exist');
       } else {
         invitationCode.boardsToBeInvited.forEach((boardId) => {
-          const board = Boards.findOne(boardId);
+          const board = ReactiveCache.getBoard(boardId);
           board.addMember(doc._id);
         });
         if (!doc.profile) {
@@ -1731,13 +2105,13 @@ if (Meteor.isServer) {
   JsonRoutes.add('GET', '/api/user', function (req, res) {
     try {
       Authentication.checkLoggedIn(req.userId);
-      const data = Meteor.users.findOne({
+      const data = ReactiveCache.getUser({
         _id: req.userId,
       });
       delete data.services;
 
       // get all boards where the user is member of
-      let boards = Boards.find(
+      let boards = ReactiveCache.getBoards(
         {
           type: 'board',
           'members.userId': req.userId,
@@ -1812,18 +2186,18 @@ if (Meteor.isServer) {
     try {
       Authentication.checkUserId(req.userId);
       let id = req.params.userId;
-      let user = Meteor.users.findOne({
+      let user = ReactiveCache.getUser({
         _id: id,
       });
       if (!user) {
-        user = Meteor.users.findOne({
+        user = ReactiveCache.getUser({
           username: id,
         });
         id = user._id;
       }
 
       // get all boards where the user is member of
-      let boards = Boards.find(
+      let boards = ReactiveCache.getBoards(
         {
           type: 'board',
           'members.userId': id,
@@ -1877,12 +2251,12 @@ if (Meteor.isServer) {
       Authentication.checkUserId(req.userId);
       const id = req.params.userId;
       const action = req.body.action;
-      let data = Meteor.users.findOne({
+      let data = ReactiveCache.getUser({
         _id: id,
       });
       if (data !== undefined) {
         if (action === 'takeOwnership') {
-          data = Boards.find(
+          data = ReactiveCache.getBoards(
             {
               'members.userId': id,
               'members.isAdmin': true,
@@ -1927,9 +2301,7 @@ if (Meteor.isServer) {
               },
             );
           }
-          data = Meteor.users.findOne({
-            _id: id,
-          });
+          data = ReactiveCache.getUser(id);
         }
       }
       JsonRoutes.sendResult(res, {
@@ -1957,9 +2329,11 @@ if (Meteor.isServer) {
    *
    * @param {string} boardId the board ID
    * @param {string} userId the user ID
+   * @param {string} action the action (needs to be `add`)
    * @param {boolean} isAdmin is the user an admin of the board
    * @param {boolean} isNoComments disable comments
    * @param {boolean} isCommentOnly only enable comments
+   * @param {boolean} isWorker is the user a board worker
    * @return_type {_id: string,
    *               title: string}
    */
@@ -1972,13 +2346,11 @@ if (Meteor.isServer) {
         const userId = req.params.userId;
         const boardId = req.params.boardId;
         const action = req.body.action;
-        const { isAdmin, isNoComments, isCommentOnly } = req.body;
-        let data = Meteor.users.findOne({
-          _id: userId,
-        });
+        const { isAdmin, isNoComments, isCommentOnly, isWorker } = req.body;
+        let data = ReactiveCache.getUser(userId);
         if (data !== undefined) {
           if (action === 'add') {
-            data = Boards.find({
+            data = ReactiveCache.getBoards({
               _id: boardId,
             }).map(function (board) {
               if (!board.hasMember(userId)) {
@@ -1992,6 +2364,7 @@ if (Meteor.isServer) {
                   isTrue(isAdmin),
                   isTrue(isNoComments),
                   isTrue(isCommentOnly),
+                  isTrue(isWorker),
                   userId,
                 );
               }
@@ -2002,10 +2375,7 @@ if (Meteor.isServer) {
             });
           }
         }
-        JsonRoutes.sendResult(res, {
-          code: 200,
-          data: query,
-        });
+        JsonRoutes.sendResult(res, { code: 200, data });
       } catch (error) {
         JsonRoutes.sendResult(res, {
           code: 200,
@@ -2038,12 +2408,10 @@ if (Meteor.isServer) {
         const userId = req.params.userId;
         const boardId = req.params.boardId;
         const action = req.body.action;
-        let data = Meteor.users.findOne({
-          _id: userId,
-        });
+        let data = ReactiveCache.getUser(userId);
         if (data !== undefined) {
           if (action === 'remove') {
-            data = Boards.find({
+            data = ReactiveCache.getBoards({
               _id: boardId,
             }).map(function (board) {
               if (board.hasMember(userId)) {
@@ -2056,10 +2424,7 @@ if (Meteor.isServer) {
             });
           }
         }
-        JsonRoutes.sendResult(res, {
-          code: 200,
-          data: query,
-        });
+        JsonRoutes.sendResult(res, { code: 200, data });
       } catch (error) {
         JsonRoutes.sendResult(res, {
           code: 200,
@@ -2167,6 +2532,56 @@ if (Meteor.isServer) {
           _id: id,
           authToken: token.token,
         },
+      });
+    } catch (error) {
+      JsonRoutes.sendResult(res, {
+        code: 200,
+        data: error,
+      });
+    }
+  });
+
+  /**
+   * @operation delete_user_token
+   *
+   * @summary Delete one or all user token.
+   *
+   * @description Only the admin user (the first user) can call the REST API.
+   *
+   * @param {string} userId the user ID
+   * @param {string} token the user hashedToken
+   * @return_type {message: string}
+   */
+  JsonRoutes.add('POST', '/api/deletetoken', function (req, res) {
+    try {
+      const { userId, token } = req.body;
+      Authentication.checkUserId(req.userId);
+
+      let data = {
+        message: 'Expected a userId to be set but received none.',
+      };
+
+      if (token && userId) {
+        Accounts.destroyToken(userId, token);
+        data.message = 'Delete token: [' + token + '] from user: ' + userId;
+      } else if (userId) {
+        check(userId, String);
+        Users.update(
+          {
+            _id: userId,
+          },
+          {
+            $set: {
+              'services.resume.loginTokens': '',
+            },
+          },
+        );
+        data.message = 'Delete all token from user: ' + userId;
+      }
+
+      JsonRoutes.sendResult(res, {
+        code: 200,
+        data,
       });
     } catch (error) {
       JsonRoutes.sendResult(res, {

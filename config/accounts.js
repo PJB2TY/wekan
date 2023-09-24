@@ -1,5 +1,54 @@
+import { TAPi18n } from '/imports/i18n';
+
 const passwordField = AccountsTemplates.removeField('password');
 const emailField = AccountsTemplates.removeField('email');
+let disableRegistration = false;
+let disableForgotPassword = false;
+let passwordLoginEnabled = false;
+let oidcRedirectionEnabled = false;
+let oauthServerUrl = "home";
+let oauthDashboardUrl = "";
+
+Meteor.call('isOidcRedirectionEnabled', (_, result) => {
+  if(result)
+  {
+    oidcRedirectionEnabled = true;
+  }
+});
+
+Meteor.call('isPasswordLoginEnabled', (_, result) => {
+  if (result) {
+    passwordLoginEnabled = true;
+  }
+});
+
+Meteor.call('getOauthServerUrl', (_, result) => {
+  if (result) {
+    oauthServerUrl = result;
+  }
+});
+
+Meteor.call('getOauthDashboardUrl', (_, result) => {
+  if (result) {
+    oauthDashboardUrl = result;
+  }
+});
+
+Meteor.call('isDisableRegistration', (_, result) => {
+  if (result) {
+    disableRegistration = true;
+    //console.log('disableRegistration');
+    //console.log(result);
+  }
+});
+
+Meteor.call('isDisableForgotPassword', (_, result) => {
+  if (result) {
+    disableForgotPassword = true;
+    //console.log('disableForgotPassword');
+    //console.log(result);
+  }
+});
 
 AccountsTemplates.addFields([
   {
@@ -27,22 +76,41 @@ AccountsTemplates.configure({
   confirmPassword: true,
   enablePasswordChange: true,
   sendVerificationEmail: true,
-  showForgotPasswordLink: true,
+  showForgotPasswordLink: !disableForgotPassword,
+  forbidClientAccountCreation: disableRegistration,
   onLogoutHook() {
-    const homePage = 'home';
-    if (FlowRouter.getRouteName() === homePage) {
-      FlowRouter.reload();
-    } else {
-      FlowRouter.go(homePage);
+    // here comeslogic for redirect
+    if(oidcRedirectionEnabled)
+    {
+      window.location = oauthServerUrl + oauthDashboardUrl;
+    }
+    else
+    {
+      const homePage = 'home';
+      if (FlowRouter.getRouteName() === homePage) {
+        FlowRouter.reload();
+      } else {
+        FlowRouter.go(homePage);
+      }
     }
   },
 });
 
+if (!disableForgotPassword) {
+  [
+    'forgotPwd',
+    'resetPwd',
+  ].forEach(routeName => AccountsTemplates.configureRoute(routeName));
+}
+
+if (!disableRegistration) {
+  [
+    'signUp',
+  ].forEach(routeName => AccountsTemplates.configureRoute(routeName));
+}
+
 [
   'signIn',
-  'signUp',
-  'resetPwd',
-  'forgotPwd',
   'enrollAccount',
 ].forEach(routeName => AccountsTemplates.configureRoute(routeName));
 

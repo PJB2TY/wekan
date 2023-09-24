@@ -32,7 +32,9 @@ template(name="boardOrgRow")
     td
       if currentUser.isBoardAdmin
         a.member.orgOrTeamMember.add-member.js-manage-board-removeOrg(title="{{_ 'remove-from-board'}}")
-          i.fa.fa-minus
+          i.removeTeamFaMinus.fa.fa-minus
+        .divaddfaplusminus
+          | {{_ 'remove-btn'}}
 
 template(name="boardTeamRow")
   tr
@@ -43,7 +45,9 @@ template(name="boardTeamRow")
     td
       if currentUser.isBoardAdmin
         a.member.orgOrTeamMember.add-member.js-manage-board-removeTeam(title="{{_ 'remove-from-board'}}")
-          i.fa.fa-minus
+          i.removeTeamFaMinus.fa.fa-minus
+        .divaddfaplusminus
+          | {{_ 'remove-btn'}}
 
 template(name="boardOrgName")
   svg.avatar.avatar-initials(viewBox="0 0 {{orgViewPortWidth}} 15")
@@ -81,7 +85,7 @@ template(name="changeAvatarPopup")
     each uploadedAvatars
       li: a.js-select-avatar
         .member
-          img.avatar.avatar-image(src="{{url avatarUrlOptions}}")
+          img.avatar.avatar-image(src="{{link}}?auth=false&brokenIsFine=true")
         | {{_ 'uploaded-avatar'}}
         if isSelected
           i.fa.fa-check
@@ -89,7 +93,7 @@ template(name="changeAvatarPopup")
           unless isSelected
             a.js-delete-avatar {{_ 'delete'}}
             |  -
-          = original.name
+          = name
     li: a.js-select-initials
       .member
         +userAvatarInitials(userId=currentUser._id)
@@ -98,6 +102,13 @@ template(name="changeAvatarPopup")
         i.fa.fa-check
        p.sub-name {{_ 'default-avatar'}}
   input.hide.js-upload-avatar-input(accept="image/*;capture=camera" type="file")
+  if Meteor.settings.public.avatarsUploadMaxSize
+    | {{_ 'max-avatar-filesize'}} {{Meteor.settings.public.avatarsUploadMaxSize}}
+    br
+  if Meteor.settings.public.avatarsUploadMimeTypes
+    | {{_ 'allowed-avatar-filetypes'}} {{Meteor.settings.public.avatarsUploadMimeTypes}}
+    br
+  | {{_ 'invalid-file'}}
   button.full.js-upload-avatar
     i.fa.fa-upload
     | {{_ 'upload-avatar'}}

@@ -1,6 +1,6 @@
 head
   title
-  meta(name="viewport" content="maximum-scale=1.0,width=device-width,initial-scale=1.0,user-scalable=0")
+  meta(name="viewport" content="width=device-width, initial-scale=1")
   meta(http-equiv="X-UA-Compatible" content="IE=edge")
   //- XXX We should use pathFor in the following `href` to support the case
     where the application is deployed with a path prefix, but it seems to be
@@ -10,12 +10,13 @@ head
   link(rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png")
   link(rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png")
   link(rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png")
-  link(rel="manifest" href="/site.webmanifest")
+  link(rel="manifest" crossOrigin="use-credentials" href="/site.webmanifest")
   link(rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5")
   meta(name="apple-mobile-web-app-title" content="Wekan")
   meta(name="application-name" content="Wekan")
   meta(name="msapplication-TileColor" content="#00aba9")
   meta(name="theme-color" content="#ffffff")
+  //link(rel="stylesheet" type="text/css" class="__meteor-css__" href="css/html5-default-theme.css")
 
 template(name="userFormsLayout")
   section.auth-layout
@@ -33,10 +34,9 @@ template(name="userFormsLayout")
         unless currentSetting.customLoginLogoLinkUrl
           img(src="{{currentSetting.customLoginLogoImageUrl}}" width="300" height="auto")
           br
-      unless currentSetting.customLoginLogoImageUrl
-        div#isSettingDatabaseCallDone
-          img(src="{{pathFor '/wekan-logo.svg'}}" alt="" width="300" height="auto")
-          br
+      else
+        img(src="{{pathFor '/wekan-logo.svg'}}" alt="" width="300" height="auto")
+        br
       if currentSetting.textBelowCustomLoginLogo
         +viewer
           | {{currentSetting.textBelowCustomLoginLogo}}
@@ -48,6 +48,13 @@ template(name="userFormsLayout")
         +Template.dynamic(template=content)
         if currentSetting.displayAuthenticationMethod
           +connectionMethod(authenticationMethod=currentSetting.defaultAuthenticationMethod)
+        if isLegalNoticeLinkExist
+          div#legalNoticeDiv
+            span#legalNoticeSpan {{_ 'acceptance_of_our_legalNotice'}}
+            a#legalNoticeAtLink.at-link(href="{{currentSetting.legalNotice}}", target="_blank", rel="noopener noreferrer")
+              | {{_ 'legalNotice'}}
+          if getLegalNoticeWithWritTraduction
+            div
         div.at-form-lang
           select.select-lang.js-userform-set-language
             each languages

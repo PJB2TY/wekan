@@ -1,3 +1,6 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import { TAPi18n } from '/imports/i18n';
+
 const subManager = new SubsManager();
 const { calculateIndex } = Utils;
 const swimlaneWhileSortingHeight = 150;
@@ -41,9 +44,9 @@ BlazeComponent.extendComponent({
     this.mouseHasEnterCardDetails = false;
 
     // fix swimlanes sort field if there are null values
-    const currentBoardData = Boards.findOne(Session.get('currentBoard'));
+    const currentBoardData = Utils.getCurrentBoard();
     const nullSortSwimlanes = currentBoardData.nullSortSwimlanes();
-    if (nullSortSwimlanes.count() > 0) {
+    if (nullSortSwimlanes.length > 0) {
       const swimlanes = currentBoardData.swimlanes();
       let count = 0;
       swimlanes.forEach(s => {
@@ -58,7 +61,7 @@ BlazeComponent.extendComponent({
 
     // fix lists sort field if there are null values
     const nullSortLists = currentBoardData.nullSortLists();
-    if (nullSortLists.count() > 0) {
+    if (nullSortLists.length > 0) {
       const lists = currentBoardData.lists();
       let count = 0;
       lists.forEach(l => {
@@ -191,7 +194,7 @@ BlazeComponent.extendComponent({
     });
 
     this.autorun(() => {
-      if (Utils.isMiniScreenOrShowDesktopDragHandles()) {
+      if (Utils.isTouchScreenOrShowDesktopDragHandles()) {
         $swimlanesDom.sortable({
           handle: '.js-swimlane-header-handle',
         });
@@ -202,34 +205,27 @@ BlazeComponent.extendComponent({
       }
 
       // Disable drag-dropping if the current user is not a board member
-      //$swimlanesDom.sortable('option', 'disabled', !userIsMember());
       $swimlanesDom.sortable(
         'option',
         'disabled',
-        !Meteor.user() || !Meteor.user().isBoardAdmin(),
+        !ReactiveCache.getCurrentUser()?.isBoardAdmin(),
       );
     });
 
-    function userIsMember() {
-      return (
-        Meteor.user() &&
-        Meteor.user().isBoardMember() &&
-        !Meteor.user().isCommentOnly()
-      );
-    }
-
     // If there is no data in the board (ie, no lists) we autofocus the list
     // creation form by clicking on the corresponding element.
-    const currentBoard = Boards.findOne(Session.get('currentBoard'));
-    if (userIsMember() && currentBoard.lists().count() === 0) {
+    const currentBoard = Utils.getCurrentBoard();
+    if (Utils.canModifyBoard() && currentBoard.lists().length === 0) {
       boardComponent.openNewListForm();
     }
+
+    Utils.setBackgroundImage();
   },
 
-  notDisplayThisBoard(){
+  notDisplayThisBoard() {
     let allowPrivateVisibilityOnly = TableVisibilityModeSettings.findOne('tableVisibilityMode-allowPrivateOnly');
-    let currentBoard = Boards.findOne(Session.get('currentBoard'));
-    if(allowPrivateVisibilityOnly !== undefined && allowPrivateVisibilityOnly.booleanValue && currentBoard.permission == 'public'){
+    let currentBoard = Utils.getCurrentBoard();
+    if (allowPrivateVisibilityOnly !== undefined && allowPrivateVisibilityOnly.booleanValue && currentBoard.permission == 'public') {
       return true;
     }
 
@@ -237,7 +233,7 @@ BlazeComponent.extendComponent({
   },
 
   isViewSwimlanes() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-swimlanes';
     } else {
@@ -248,7 +244,7 @@ BlazeComponent.extendComponent({
   },
 
   isViewLists() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-lists';
     } else {
@@ -257,7 +253,7 @@ BlazeComponent.extendComponent({
   },
 
   isViewCalendar() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-cal';
     } else {
@@ -267,9 +263,10 @@ BlazeComponent.extendComponent({
 
   openNewListForm() {
     if (this.isViewSwimlanes()) {
-      this.childComponents('swimlane')[0]
-        .childComponents('addListAndSwimlaneForm')[0]
-        .open();
+      // The form had been removed in 416b17062e57f215206e93a85b02ef9eb1ab4902
+      // this.childComponents('swimlane')[0]
+      //   .childComponents('addListAndSwimlaneForm')[0]
+      //   .open();
     } else if (this.isViewLists()) {
       this.childComponents('listsGroup')[0]
         .childComponents('addListForm')[0]
@@ -316,15 +313,16 @@ BlazeComponent.extendComponent({
 
 BlazeComponent.extendComponent({
   onRendered() {
-    this.autorun(function() {
+    this.autorun(function () {
       $('#calendar-view').fullCalendar('refetchEvents');
     });
   },
   calendarOptions() {
     return {
       id: 'calendar-view',
-      defaultView: 'agendaDay',
+      defaultView: 'month',
       editable: true,
+      selectable: true,
       timezone: 'local',
       weekNumbers: true,
       header: {
@@ -346,9 +344,9 @@ BlazeComponent.extendComponent({
       },
       locale: TAPi18n.getLanguage(),
       events(start, end, timezone, callback) {
-        const currentBoard = Boards.findOne(Session.get('currentBoard'));
+        const currentBoard = Utils.getCurrentBoard();
         const events = [];
-        const pushEvent = function(card, title, start, end, extraCls) {
+        const pushEvent = function (card, title, start, end, extraCls) {
           start = start || card.startAt;
           end = end || card.endAt;
           title = title || card.title;
@@ -372,12 +370,12 @@ BlazeComponent.extendComponent({
         };
         currentBoard
           .cardsInInterval(start.toDate(), end.toDate())
-          .forEach(function(card) {
+          .forEach(function (card) {
             pushEvent(card);
           });
         currentBoard
           .cardsDueInBetween(start.toDate(), end.toDate())
-          .forEach(function(card) {
+          .forEach(function (card) {
             pushEvent(
               card,
               `${card.title} ${TAPi18n.__('card-due')}`,
@@ -385,14 +383,14 @@ BlazeComponent.extendComponent({
               new Date(card.dueAt.getTime() + 36e5),
             );
           });
-        events.sort(function(first, second) {
+        events.sort(function (first, second) {
           return first.id > second.id ? 1 : -1;
         });
         callback(events);
       },
       eventResize(event, delta, revertFunc) {
         let isOk = false;
-        const card = Cards.findOne(event.id);
+        const card = ReactiveCache.getCard(event.id);
 
         if (card) {
           card.setEnd(event.end.toDate());
@@ -404,12 +402,14 @@ BlazeComponent.extendComponent({
       },
       eventDrop(event, delta, revertFunc) {
         let isOk = false;
-        const card = Cards.findOne(event.id);
+        const card = ReactiveCache.getCard(event.id);
         if (card) {
           // TODO: add a flag for allDay events
           if (!event.allDay) {
-            card.setStart(event.start.toDate());
-            card.setEnd(event.end.toDate());
+            // https://github.com/wekan/wekan/issues/2917#issuecomment-1236753962
+            //card.setStart(event.start.toDate());
+            //card.setEnd(event.end.toDate());
+            card.setDue(event.start.toDate());
             isOk = true;
           }
         }
@@ -417,10 +417,62 @@ BlazeComponent.extendComponent({
           revertFunc();
         }
       },
+      select: function (startDate) {
+        const currentBoard = Utils.getCurrentBoard();
+        const currentUser = ReactiveCache.getCurrentUser();
+        const modalElement = document.createElement('div');
+        modalElement.classList.add('modal', 'fade');
+        modalElement.setAttribute('tabindex', '-1');
+        modalElement.setAttribute('role', 'dialog');
+        modalElement.innerHTML = `
+        <div class="modal-dialog justify-content-center align-items-center" role="document">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">${TAPi18n.__('r-create-card')}</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div class="modal-body text-center">
+              <input type="text" class="form-control" id="card-title-input" placeholder="">
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-primary" id="create-card-button">${TAPi18n.__('add-card')}</button>
+            </div>
+          </div>
+        </div>
+        `;
+        const createCardButton = modalElement.querySelector('#create-card-button');
+        createCardButton.addEventListener('click', function () {
+          const myTitle = modalElement.querySelector('#card-title-input').value;
+          if (myTitle) {
+            const firstList = currentBoard.draggableLists()[0];
+            const firstSwimlane = currentBoard.swimlanes()[0];
+            Meteor.call('createCardWithDueDate', currentBoard._id, firstList._id, myTitle, startDate.toDate(), firstSwimlane._id, function(error, result) {
+              if (error) {
+                console.log(error);
+              } else {
+                console.log("Card Created", result);
+              }
+            });
+            closeModal();
+          }
+        });
+        document.body.appendChild(modalElement);
+        const openModal = function() {
+          modalElement.style.display = 'flex';
+        };
+        const closeModal = function() {
+          modalElement.style.display = 'none';
+        };
+        const closeButton = modalElement.querySelector('[data-dismiss="modal"]');
+        closeButton.addEventListener('click', closeModal);
+        openModal();
+      }
     };
   },
   isViewCalendar() {
-    currentUser = Meteor.user();
+    const currentUser = ReactiveCache.getCurrentUser();
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-cal';
     } else {

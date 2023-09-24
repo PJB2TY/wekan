@@ -1,3 +1,4 @@
+import { ReactiveCache } from '/imports/reactiveCache';
 import { CardSearchPagedComponent } from '../../lib/cardSearch';
 import {
   OPERATOR_HAS,
@@ -38,12 +39,12 @@ BlazeComponent.extendComponent({
       {
         'click .js-due-cards-view-me'() {
           Utils.setDueCardsView('me');
-          Popup.close();
+          Popup.back();
         },
 
         'click .js-due-cards-view-all'() {
           Utils.setDueCardsView('all');
-          Popup.close();
+          Popup.back();
         },
       },
     ];
@@ -66,7 +67,7 @@ class DueCardsComponent extends CardSearchPagedComponent {
     });
 
     if (Utils.dueCardsView() !== 'all') {
-      queryParams.addPredicate(OPERATOR_USER, Meteor.user().username);
+      queryParams.addPredicate(OPERATOR_USER, ReactiveCache.getCurrentUser().username);
     }
 
     this.runGlobalSearch(queryParams);
